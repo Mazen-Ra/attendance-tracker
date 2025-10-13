@@ -272,6 +272,14 @@ function startScanner() {
   ).catch(err => {
     alert("خطأ في تشغيل الكاميرا: " + err);
   });
+  // After starting the QR code reader
+  setTimeout(() => {
+    html5QrCode.applyVideoConstraints({
+      focusMode: "continuous",
+      // You can also add other advanced constraints like zoom here
+      // advanced: [{ zoom: 2.0 }],
+    });
+  }, 2000);
 }
 
 function handleBarcode(barcode) {
