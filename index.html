@@ -1,68 +1,49 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#e0e0e0">
   <meta charset="UTF-8">
   <title>حضور - كيمياء حيوية سريرية (1)_1</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#e0e0e0">
   <style>
-    body {
-      font-family: 'Segoe UI', 'Arial', 'Helvetica', sans-serif;
-      background: #f9f9f9;
-      padding: 20px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-      font-size: 13px;
-    }
-    th, td {
-      border: 1px solid #ccc;
-      padding: 6px;
-      text-align: center;
-    }
-    th {
-      background-color: #e0e0e0;
-    }
-    input[type="checkbox"] {
-      transform: scale(1.2);
-      zoom: 1.2; /* Safari fallback */
-      cursor: pointer;
-    }
-    button, input[type="file"] {
-      margin-top: 20px;
-      padding: 10px;
-      font-size: 14px;
-    }
+    body { font-family: 'Segoe UI', 'Arial', 'Helvetica', sans-serif; background: #f9f9f9; padding: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 13px; }
+    th, td { border: 1px solid #ccc; padding: 6px; text-align: center; }
+    th { background-color: #e0e0e0; }
+    input[type="checkbox"] { transform: scale(1.2); zoom: 1.2; cursor: pointer; }
+    button, input[type="file"] { margin-top: 20px; padding: 10px; font-size: 14px; }
+    #reader { width: 300px; margin-top: 20px; }
   </style>
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 <body>
-  <h2>حضور - كيمياء حيوية سريرية (1) مازن| الشعبة:1</h2>
-  <p>المدرس: غسان محمود الشنان |  الأول  2025-2026 | رمز المادة: 24528</p>
+  <h2>حضور - كيمياء حيوية سريرية (1) مازن | الشعبة:1</h2>
+  <p>المدرس: غسان محمود الشنان | الأول 2025-2026 | رمز المادة: 24528</p>
+
   استرجاع ↑↑
   <input type="file" accept=".csv" onchange="handleCSVUpload(event)">
   <button onclick="downloadCSV()">↓↓ حفظ الحضور كـ CSV</button>
-<label for="sessionSelector">اختر الجلسة لتسجيل الحضور:</label>
-<select id="sessionSelector">
-  <option value="0">جلسة 1</option>
-  <option value="1">جلسة 2</option>
-  <option value="2">جلسة 3</option>
-  <option value="3">جلسة 4</option>
-  <option value="4">جلسة 5</option>
-  <option value="5">جلسة 6</option>
-  <option value="6">جلسة 7</option>
-  <option value="7">جلسة 8</option>
-  <option value="8">جلسة 9</option>
-  <option value="9">جلسة 10</option>
-  <option value="10">جلسة 11</option>
-  <option value="11">جلسة 12</option>
-  <option value="12">جلسة 13</option>
-  <option value="13">جلسة 14</option>
-</select>
-<button onclick="startScanner()">📡 بدء المسح بالكاميرا</button>
-<div id="reader" style="width:300px; margin-top:20px;"></div>
+
+  <label for="sessionSelector">اختر الجلسة لتسجيل الحضور:</label>
+  <select id="sessionSelector">
+    <option value="0">جلسة 1</option>
+    <option value="1">جلسة 2</option>
+    <option value="2">جلسة 3</option>
+    <option value="3">جلسة 4</option>
+    <option value="4">جلسة 5</option>
+    <option value="5">جلسة 6</option>
+    <option value="6">جلسة 7</option>
+    <option value="7">جلسة 8</option>
+    <option value="8">جلسة 9</option>
+    <option value="9">جلسة 10</option>
+    <option value="10">جلسة 11</option>
+    <option value="11">جلسة 12</option>
+    <option value="12">جلسة 13</option>
+    <option value="13">جلسة 14</option>
+  </select>
+
+  <button onclick="startScanner()">📡 بدء المسح بالكاميرا</button>
+  <div id="reader"></div>
 
   <table id="attendanceTable">
     <thead>
@@ -71,20 +52,10 @@
         <th>الرقم الجامعي</th>
         <th>اسم الطالب</th>
         <th>الإجمالي</th>
-        <th>جلسة 1</th>
-        <th>جلسة 2</th>
-        <th>جلسة 3</th>
-        <th>جلسة 4</th>
-        <th>جلسة 5</th>
-        <th>جلسة 6</th>
-        <th>جلسة 7</th>
-        <th>جلسة 8</th>
-        <th>جلسة 9</th>
-        <th>جلسة 10</th>
-        <th>جلسة 11</th>
-        <th>جلسة 12</th>
-        <th>جلسة 13</th>
-        <th>جلسة 14</th>
+        <th>جلسة 1</th><th>جلسة 2</th><th>جلسة 3</th><th>جلسة 4</th>
+        <th>جلسة 5</th><th>جلسة 6</th><th>جلسة 7</th><th>جلسة 8</th>
+        <th>جلسة 9</th><th>جلسة 10</th><th>جلسة 11</th><th>جلسة 12</th>
+        <th>جلسة 13</th><th>جلسة 14</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -98,216 +69,215 @@
     <option value="4">شعب مقررات كل الفصول</option>
   </select>
   <button onclick="clearAttendanceData()">تنفيذ المحي</button>
+
 <script>
+  // Service worker registration (optional)
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('service-worker.js')
-      .then(() => console.log("✅ Service Worker Registered"))
-      .catch(err => console.error("❌ SW Error:", err));
+    navigator.serviceWorker.register('service-worker.js').then(() => console.log("✅ Service Worker Registered")).catch(err => console.error("❌ SW Error:", err));
   }
 </script>
-  <script>
-    let lastTap = 0;
-    const students = [['201710057',' مرح محمد انور  الشريف'],['201910150',' سدرة وليد  السواح'],['201910184',' شهد سليم - العاص'],['201910449',' انطون سمير  خطار'],['201910752',' اسراء سامر  عرواني'],['201910869',' هديل سعيد  الشحت'],['202011029',' آلاء خلدون  الجعفري'],['202011091',' آيه ياسر  حبيب'],['202011105',' شيماء رياض  ليلى'],['202011436',' هاله محمد مازن  القدسي'],['202011443',' رغد محمد  الحاج'],['202011455',' دلع جلال  عمار'],['202110014',' لانا محمد اسامه  قصيباتي'],['202110065',' لين مازن  حمزه'],['202110087',' ريناد زهير  المصري'],['202110092',' غريس انطون  نخله'],['202110103',' محمد امير محمد  الملك'],['202110127',' ألمى محمد ياسر  العطائي'],['202110312',' محمد سعيد يحيى  الطباع'],['202110362',' نور محمد خالد  الجبان'],['202110374',' سدره محمد غياث  المؤذن'],['202110443',' نادين بديع  طرابلسي'],['202110534',' ميس علي  الدهش'],['202110552',' جودي خالد  القاضي'],['202110562',' روان بسام  الحموي'],['202111031',' ليلاس حسان محمد صبحي  الشمص'],['202111147',' زينه ميلاد  زغيب'],['202111149',' زينه محمد عمار  الكناني'],['202111279',' صفاء ايهاب  بوارشي'],['202111283',' ماسة بشار  ملحم'],['202111344',' مجد حسام  القيسي'],['202111560',' رغد منير  شيبون'],['202111585',' سنا هيثم  الخيمي'],['202111596',' لين عبد الملك  درويش'],['202111599',' شغاف ماهر  عربش'],['202111605',' صباح خالد  دالاتي'],['202111648',' حلا علي  جنيد'],['202111664',' نور محمد  العيسى'],['202120094',' لانا باسم  حوارنة'],['202120108',' ماريا سمير  الحلاق']];
-    const tbody = document.querySelector("#attendanceTable tbody");
 
-    function loadSavedAttendance(id) {
-      const saved = localStorage.getItem(`attendance_20251_024528_1_${id}`);
-      return saved ? JSON.parse(saved) : Array(14).fill(false);
+<script>
+/* --- Globals and data --- */
+let lastTap = 0;
+
+const students = [
+  ['201710057',' مرح محمد انور  الشريف'],['201910150',' سدرة وليد  السواح'],['201910184',' شهد سليم - العاص'],
+  ['201910449',' انطون سمير  خطار'],['201910752',' اسراء سامر  عرواني'],['201910869',' هديل سعيد  الشحت'],
+  ['202011029',' آلاء خلدون  الجعفري'],['202011091',' آيه ياسر  حبيب'],['202011105',' شيماء رياض  ليلى'],
+  ['202011436',' هاله محمد مازن  القدسي'],['202011443',' رغد محمد  الحاج'],['202011455',' دلع جلال  عمار'],
+  ['202110014',' لانا محمد اسامه  قصيباتي'],['202110065',' لين مازن  حمزه'],['202110087',' ريناد زهير  المصري'],
+  ['202110092',' غريس انطون  نخله'],['202110103',' محمد امير محمد  الملك'],['202110127',' ألمى محمد ياسر  العطائي'],
+  ['202110312',' محمد سعيد يحيى  الطباع'],['202110362',' نور محمد خالد  الجبان'],['202110374',' سدره محمد غياث  المؤذن'],
+  ['202110443',' نادين بديع  طرابلسي'],['202110534',' ميس علي  الدهش'],['202110552',' جودي خالد  القاضي'],
+  ['202110562',' روان بسام  الحموي'],['202111031',' ليلاس حسان محمد صبحي  الشمص'],['202111147',' زينه ميلاد  زغيب'],
+  ['202111149',' زينه محمد عمار  الكناني'],['202111279',' صفاء ايهاب  بوارشي'],['202111283',' ماسة بشار  ملحم'],
+  ['202111344',' مجد حسام  القيسي'],['202111560',' رغد منير  شيبون'],['202111585',' سنا هيثم  الخيمي'],
+  ['202111596',' لين عبد الملك  درويش'],['202111599',' شغاف ماهر  عربش'],['202111605',' صباح خالد  دالاتي'],
+  ['202111648',' حلا علي  جنيد'],['202111664',' نور محمد  العيسى'],['202120094',' لانا باسم  حوارنة'],
+  ['202120108',' ماريا سمير  الحلاق']
+];
+
+document.addEventListener('DOMContentLoaded', () => {
+  const tbody = document.querySelector("#attendanceTable tbody");
+
+  function loadSavedAttendance(id) {
+    const saved = localStorage.getItem(`attendance_20251_024528_1_${id}`);
+    return saved ? JSON.parse(saved) : Array(14).fill(false);
+  }
+  function saveAttendance(id, values) {
+    localStorage.setItem(`attendance_20251_024528_1_${id}`, JSON.stringify(values));
+  }
+  function updateTotal(row, id) {
+    const checkboxes = row.querySelectorAll("input[type='checkbox']");
+    const values = [];
+    let total = 0;
+    checkboxes.forEach(cb => { values.push(cb.checked); if (cb.checked) total++; });
+    const totalCell = row.querySelector(".total");
+    if (totalCell) totalCell.textContent = total;
+    saveAttendance(id, values);
+  }
+
+  // populate table
+  students.forEach((student, index) => {
+    const [id, name] = student;
+    const saved = loadSavedAttendance(id);
+    const tr = document.createElement("tr");
+    let checkboxes = "";
+    for (let i = 0; i < 14; i++) {
+      checkboxes += `<td><input type="checkbox" ${saved[i] ? "checked" : ""} onchange="(function(trId){ updateTotal(trId, '${id}'); })(this.closest('tr'))"></td>`;
     }
+    tr.innerHTML = `
+      <td>${index + 1}</td>
+      <td>${id}</td>
+      <td>${name}</td>
+      <td class="total">${saved.filter(Boolean).length}</td>
+      ${checkboxes}
+    `;
+    tbody.appendChild(tr);
+  });
 
-    function saveAttendance(id, values) {
-      localStorage.setItem(`attendance_20251_024528_1_${id}`, JSON.stringify(values));
+  // Expose updateTotal globally for inline handler closure above
+  window.updateTotal = updateTotal;
+});
+
+/* --- CSV download / upload --- */
+function downloadCSV() {
+  const rows = document.querySelectorAll("#attendanceTable tbody tr");
+  let header = "رقم,الرقم الجامعي,اسم الطالب,الإجمالي";
+  for (let i = 1; i <= 14; i++) header += `,جلسة ${i}`;
+  header += "\n";
+
+  let csv = header;
+  rows.forEach(row => {
+    const cells = row.querySelectorAll("td");
+    const number = cells[0].textContent.trim();
+    const id = cells[1].textContent.trim();
+    const name = cells[2].textContent.trim();
+    const total = cells[3].textContent.trim();
+    let sessionData = "";
+    for (let i = 4; i < 18; i++) {
+      const input = cells[i].querySelector("input");
+      const checked = input ? input.checked : false;
+      sessionData += `,${checked ? "1" : "0"}`;
     }
+    csv += `${number},${id},"${name}",${total}${sessionData}\n`;
+  });
 
-    function updateTotal(row, id) {
-      const checkboxes = row.querySelectorAll("input[type='checkbox']");
-      const values = [];
-      let total = 0;
-      checkboxes.forEach(cb => {
-        values.push(cb.checked);
-        if (cb.checked) total++;
-      });
-      row.querySelector(".total").textContent = total;
-      saveAttendance(id, values);
-    }
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const reader = new FileReader();
+  reader.onload = function () {
+    const link = document.createElement("a");
+    link.href = reader.result;
+    link.download = "20251_كيمياء_حيوية_سريرية_(1)_الشعبة_1.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  reader.readAsDataURL(blob);
+}
 
-    students.forEach((student, index) => {
-      const [id, name] = student;
-      const saved = loadSavedAttendance(id);
-      const tr = document.createElement("tr");
-      let checkboxes = "";
-      for (let i = 0; i < 14; i++) {
-        checkboxes += `<td><input type="checkbox" ${saved[i] ? "checked" : ""} onchange="updateTotal(this.closest('tr'), '${id}')"></td>`;
-      }
-      tr.innerHTML = `
-        <td>${index + 1}</td>
-        <td>${id}</td>
-        <td>${name}</td>
-        <td class="total">${saved.filter(Boolean).length}</td>
-        ${checkboxes}
-      `;
-      tbody.appendChild(tr);
+function handleCSVUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const lines = e.target.result.split('\n').map(line => line.trim()).filter(Boolean);
+    if (lines.length === 0) return;
+    lines.shift(); // remove header
+    lines.forEach(line => {
+      const parts = line.split(',');
+      const id = parts[1];
+      const sessions = parts.slice(4, 18).map(val => val.includes('1'));
+      localStorage.setItem(`attendance_20251_024528_1_${id}`, JSON.stringify(sessions));
     });
+    event.target.value = "";
+    location.reload();
+  };
+  reader.readAsText(file);
+}
 
-    function downloadCSV() {
-      let header = "رقم,الرقم الجامعي,اسم الطالب,الإجمالي";
-      for (let i = 1; i <= 14; i++) header += `,جلسة ${i}`;
-      header += "\n";
-
-      let csv = header;
-      const rows = document.querySelectorAll("#attendanceTable tbody tr");
-      rows.forEach(row => {
-        const cells = row.querySelectorAll("td");
-        const number = cells[0].textContent.trim();
-        const id = cells[1].textContent.trim();
-        const name = cells[2].textContent.trim();
-        const total = cells[3].textContent.trim();
-        let sessionData = "";
-        for (let i = 4; i < 18; i++) {
-          const checked = cells[i].querySelector("input").checked;
-          sessionData += `,${checked ? "1" : "0"}`;
-        }
-        csv += `${number},${id},"${name}",${total}${sessionData}\n`;
-      });
-
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      const reader = new FileReader();
-      reader.onload = function () {
-        const link = document.createElement("a");
-        link.href = reader.result;
-        link.download = "20251_كيمياء حيوية سريرية (1)_الشعبة_1.csv";
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      };
-      reader.readAsDataURL(blob);
-    }
-
-    function handleCSVUpload(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        const lines = e.target.result.split('\n').map(line => line.trim()).filter(Boolean);
-        lines.shift(); // remove header
-
-        lines.forEach(line => {
-          const parts = line.split(',');
-          const id = parts[1];
-          const sessions = parts.slice(4, 18).map(val => val.includes('1'));
-          localStorage.setItem(`attendance_20251_024528_1_${id}`, JSON.stringify(sessions));
-        });
-        event.target.value = ""; // Reset input for Safari
-        location.reload();
-      };
-      reader.readAsText(file);
-    }
+/* --- Speech selection --- */
 function speakSelectedText() {
   const selectedText = window.getSelection().toString().trim();
   if (selectedText) {
+    try { speechSynthesis.cancel(); } catch (e) {}
     const utterance = new SpeechSynthesisUtterance(selectedText);
-    utterance.lang = 'ar-SY'; // Arabic (Syria)
+    utterance.lang = 'ar-SY';
     speechSynthesis.speak(utterance);
   }
 }
-
-// For mouse users
 document.addEventListener('mouseup', speakSelectedText);
-
-// For touch devices
 document.addEventListener('touchend', speakSelectedText);
-document.addEventListener('touchstart', function (e) {
-  const currentTime = new Date().getTime();
+document.addEventListener('touchstart', function () {
+  const currentTime = Date.now();
   const tapLength = currentTime - lastTap;
-
-  if (tapLength < 300 && tapLength > 0) {
-    // Simulated double tap
-    const selectedText = window.getSelection().toString().trim();
-    if (selectedText) {
-      const utterance = new SpeechSynthesisUtterance(selectedText);
-      utterance.lang = 'ar-SY'; // Arabic (Syria)
-      speechSynthesis.speak(utterance);
-    }
-  }
-
+  if (tapLength < 300 && tapLength > 0) speakSelectedText();
   lastTap = currentTime;
 });
 
+/* --- Clearing data --- */
 function clearAttendanceData() {
   const choice = document.getElementById("clearChoice").value;
-
-      for (let key in localStorage) {
-        if (
-          (choice === "1" && key.startsWith("attendance_20251_024528_1_")) ||
-          (choice === "2" && key.startsWith("attendance_20251_024528_")) ||
-          (choice === "3" && key.startsWith("attendance_20251_")) ||
-          (choice === "4" && key.startsWith("attendance_"))
-        ) {
-          localStorage.removeItem(key);
-        }
-      }
-
-      const messages = {
-        "1": "☑ تم محي سجلات هذه الشعبة.",
-        "2": "☑ تم محي سجلات كل شعب هذا المقرر.",
-        "3": "☑ تم محي سجلات مقررات هذا الفصل.",
-        "4": "☑ تم محي جميع سجلات الحضور."
-      };
-
-      alert(messages[choice] || "⮽ اختيار غير صالح. لم يتم المحي.");
-      location.reload();
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key) continue;
+    if ((choice === "1" && key.startsWith("attendance_20251_024528_1_")) ||
+        (choice === "2" && key.startsWith("attendance_20251_024528_")) ||
+        (choice === "3" && key.startsWith("attendance_20251_")) ||
+        (choice === "4" && key.startsWith("attendance_"))) {
+      localStorage.removeItem(key);
+      i--; // adjust index after removal
     }
+  }
+  const messages = {
+    "1": "☑ تم محي سجلات هذه الشعبة.",
+    "2": "☑ تم محي سجلات كل شعب هذا المقرر.",
+    "3": "☑ تم محي سجلات مقررات هذا الفصل.",
+    "4": "☑ تم محي جميع سجلات الحضور."
+  };
+  alert(messages[choice] || "⮽ اختيار غير صالح. لم يتم المحي.");
+  location.reload();
+}
+
+/* --- QR / barcode scanner --- */
 function startScanner() {
   const html5QrCode = new Html5Qrcode("reader");
-
   html5QrCode.start(
     { facingMode: "environment" },
-    {
-      fps: 10,
-      qrbox: 250,
-      aspectRatio: 1.0,
-      disableFlip: true
+    { fps: 10, qrbox: 250, aspectRatio: 1.0, disableFlip: true },
+    decodedText => {
+      html5QrCode.stop().then(() => handleBarcode(decodedText)).catch(err => console.error("خطأ في إيقاف الكاميرا:", err));
     },
-    (decodedText) => {
-      html5QrCode.stop().then(() => {
-        handleBarcode(decodedText);
-      }).catch(err => {
-        console.error("خطأ في إيقاف الكاميرا:", err);
-      });
-    },
-    (errorMessage) => {
-      // Optional: console.log(errorMessage);
+    errorMessage => {
+      // optional: console.debug(errorMessage);
     }
   ).then(() => {
-    // Apply constraints after camera starts
+    // attempt to apply higher-res constraints; may be ignored by some browsers/devices
     html5QrCode.applyVideoConstraints({
       focusMode: "continuous",
       advanced: [
         { width: 1920 },
         { height: 1080 },
-        { zoom: 2.0 }, // Helps improve resolution on some devices
-        { torch: false } // Optional: disable flash if supported
+        { zoom: 2.0 },
+        { torch: false }
       ]
-    }).catch(err => {
-      console.warn("تعذر تطبيق قيود الفيديو:", err);
-    });
+    }).catch(err => console.warn("تعذر تطبيق قيود الفيديو:", err));
   }).catch(err => {
     alert("خطأ في تشغيل الكاميرا: " + err);
   });
 }
 
 function handleBarcode(barcode) {
-  const sessionIndex = parseInt(document.getElementById("sessionSelector").value);
+  const sessionIndex = parseInt(document.getElementById("sessionSelector").value, 10);
   const row = [...document.querySelectorAll("#attendanceTable tbody tr")]
     .find(tr => tr.children[1].textContent.trim() === barcode);
-
   if (row) {
     const checkboxes = row.querySelectorAll("input[type='checkbox']");
     const targetCheckbox = checkboxes[sessionIndex];
     if (targetCheckbox && !targetCheckbox.checked) {
       targetCheckbox.checked = true;
-      updateTotal(row, barcode);
+      if (typeof window.updateTotal === 'function') window.updateTotal(row, barcode);
       alert(`✅ تم تسجيل حضور: ${row.children[2].textContent.trim()} في جلسة ${sessionIndex + 1}`);
     } else {
       alert(`⚠️ الجلسة ${sessionIndex + 1} مسجلة بالفعل لهذا الطالب.`);
@@ -316,6 +286,6 @@ function handleBarcode(barcode) {
     alert(`❌ لم يتم العثور على الرقم الجامعي : ${barcode}`);
   }
 }
-  </script>
+</script>
 </body>
 </html>
