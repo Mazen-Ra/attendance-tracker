@@ -259,27 +259,39 @@ function clearAttendanceData() {
     }
 function startScanner() {
   const html5QrCode = new Html5Qrcode("reader");
+
   html5QrCode.start(
     { facingMode: "environment" },
-    { fps: 10, qrbox: 250 },
+    {
+      fps: 10,
+      qrbox: 250,
+      aspectRatio: 1.0,
+      disableFlip: true
+    },
     (decodedText) => {
-      html5QrCode.stop();
-      handleBarcode(decodedText);
+      html5QrCode.stop().then(() => {
+        handleBarcode(decodedText);
+      }).catch(err => {
+        console.error("خطأ في إيقاف الكاميرا:", err);
+      });
     },
     (errorMessage) => {
       // Optional: console.log(errorMessage);
     }
-  ).catch(err => {
-    alert("خطأ في تشغيل الكاميرا: " + err);
-  });
-  // After starting the QR code reader
-  setTimeout(() => {
+  ).then(() => {
+    // Apply constraints after camera starts
     html5QrCode.applyVideoConstraints({
       focusMode: "continuous",
-      // You can also add other advanced constraints like zoom here
-      // advanced: [{ zoom: 2.0 }],
+      advanced: [
+        { zoom: 2.0 }, // Helps improve resolution on some devices
+        { torch: false } // Optional: disable flash if supported
+      ]
+    }).catch(err => {
+      console.warn("تعذر تطبيق قيود الفيديو:", err);
     });
-  }, 2000);
+  }).catch(err => {
+    alert("خطأ في تشغيل الكاميرا: " + err);
+  });
 }
 
 function handleBarcode(barcode) {
