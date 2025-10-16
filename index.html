@@ -2,24 +2,33 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <title>حضور - كيمياء حيوية سريرية (1)_1</title>
-  <link rel="manifest" href="manifest.json">
+  <title>حضور - كيمياء حيوية سريرية (1)</title>
   <meta name="theme-color" content="#e0e0e0">
   <style>
-    body { font-family: 'Segoe UI', 'Arial', 'Helvetica', sans-serif; background: #f9f9f9; padding: 20px; }
+    body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; background: #f9f9f9; padding: 20px; }
     table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 13px; }
     th, td { border: 1px solid #ccc; padding: 6px; text-align: center; }
     th { background-color: #e0e0e0; }
-    input[type="checkbox"] { transform: scale(1.2); zoom: 1.2; cursor: pointer; }
-    button, input[type="file"] { margin-top: 20px; padding: 10px; font-size: 14px; }
+    input[type="checkbox"] { transform: scale(1.2); cursor: pointer; }
+    button, input[type="file"], select { margin-top: 10px; padding: 8px 10px; font-size: 14px; }
     #reader { width: 300px; margin-top: 20px; }
   </style>
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 <body>
-  <h2>حضور - كيمياء حيوية سريرية (1) مازن | الشعبة:1</h2>
-  <p>المدرس: غسان محمود الشنان | الأول 2025-2026 | رمز المادة: 24528</p>
-  <button id="sortByNameBtn">⬆ ترتيب الأسماء تصاعدي</button>
+  <h2>حضور - كيمياء حيوية سريرية (1)</h2>
+
+  <label for="sectionSelector">اختر الشعبة:</label>
+  <select id="sectionSelector">
+    <option value="999">كل الشعب</option>
+    <option value="1">1 | غسان محمود الشنان</option>
+    <option value="2">2 | غسان محمود الشنان</option>
+    <option value="3">3 | رنا محمد أبو الخير حلاق</option>
+    <option value="4">4 | رنا محمد أبو الخير حلاق</option>
+  </select>
+
+  <p>المدرس: غسان محمود الشنان, رنا محمد أبو الخير حلاق | الفصل الأول 2025-2026 | رمز المادة: 24528</p>
+
   استرجاع ↑↑
   <input type="file" accept=".csv" onchange="handleCSVUpload(event)">
   <button onclick="downloadCSV()">↓↓ حفظ الحضور كـ CSV</button>
@@ -42,13 +51,14 @@
     <option value="13">جلسة 14</option>
   </select>
 
-  <button onclick="startScanner()">📡 بدء المسح بالكاميرا</button>
+  <button onclick="startScanner()">بدء المسح بالكاميرا</button>
   <div id="reader"></div>
 
-  <table id="attendanceTable">
+  <table id="attendanceTable" aria-label="attendance table">
     <thead>
       <tr>
         <th>الرقم</th>
+        <th>الشعبة</th>
         <th>الرقم الجامعي</th>
         <th>اسم الطالب</th>
         <th>الإجمالي</th>
@@ -63,161 +73,159 @@
 
   <label for="clearChoice">☐ اختر نوع المحي من ذاكرة المتصفح:</label>
   <select id="clearChoice">
-    <option value="1">هذه الشعبة فقط</option>
-    <option value="2">كل شعب المقرر</option>
-    <option value="3">شعب كل مقررات الفصل</option>
-    <option value="4">شعب مقررات كل الفصول</option>
+    <option value="1">هذا المقرر في هذا الفصل</option>
+    <option value="2">مقررات هذا الفصل</option>
+    <option value="3">جميع الفصول</option>
   </select>
   <button onclick="clearAttendanceData()">تنفيذ المحي</button>
 
 <script>
-  // Service worker registration (optional)
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('service-worker.js').then(() => console.log("✅ Service Worker Registered")).catch(err => console.error("❌ SW Error:", err));
-  }
-</script>
-
-<script>
-/* --- Globals and data --- */
-let lastTap = 0;
-
+/* students: [section, studentId, name] */
 const students = [
-  ['201710057',' مرح محمد انور  الشريف'],['201910150',' سدرة وليد  السواح'],['201910184',' شهد سليم - العاص'],
-  ['201910449',' انطون سمير  خطار'],['201910752',' اسراء سامر  عرواني'],['201910869',' هديل سعيد  الشحت'],
-  ['202011029',' آلاء خلدون  الجعفري'],['202011091',' آيه ياسر  حبيب'],['202011105',' شيماء رياض  ليلى'],
-  ['202011436',' هاله محمد مازن  القدسي'],['202011443',' رغد محمد  الحاج'],['202011455',' دلع جلال  عمار'],
-  ['202110014',' لانا محمد اسامه  قصيباتي'],['202110065',' لين مازن  حمزه'],['202110087',' ريناد زهير  المصري'],
-  ['202110092',' غريس انطون  نخله'],['202110103',' محمد امير محمد  الملك'],['202110127',' ألمى محمد ياسر  العطائي'],
-  ['202110312',' محمد سعيد يحيى  الطباع'],['202110362',' نور محمد خالد  الجبان'],['202110374',' سدره محمد غياث  المؤذن'],
-  ['202110443',' نادين بديع  طرابلسي'],['202110534',' ميس علي  الدهش'],['202110552',' جودي خالد  القاضي'],
-  ['202110562',' روان بسام  الحموي'],['202111031',' ليلاس حسان محمد صبحي  الشمص'],['202111147',' زينه ميلاد  زغيب'],
-  ['202111149',' زينه محمد عمار  الكناني'],['202111279',' صفاء ايهاب  بوارشي'],['202111283',' ماسة بشار  ملحم'],
-  ['202111344',' مجد حسام  القيسي'],['202111560',' رغد منير  شيبون'],['202111585',' سنا هيثم  الخيمي'],
-  ['202111596',' لين عبد الملك  درويش'],['202111599',' شغاف ماهر  عربش'],['202111605',' صباح خالد  دالاتي'],
-  ['202111648',' حلا علي  جنيد'],['202111664',' نور محمد  العيسى'],['202120094',' لانا باسم  حوارنة'],
-  ['202120108',' ماريا سمير  الحلاق']
+  ['1','201710057','مرح محمد انور الشريف'],['1','201910150','سدرة وليد السواح'],['1','201910184','شهد سليم - العاص'],
+  ['1','201910449','انطون سمير خطار'],['1','201910752','اسراء سامر عرواني'],['1','201910869','هديل سعيد الشحت'],
+  ['1','202011029','آلاء خلدون الجعفري'],['1','202011091','آيه ياسر حبيب'],['1','202011105','شيماء رياض ليلى'],
+  ['1','202011436','هاله محمد مازن القدسي'],['1','202011443','رغد محمد الحاج'],['1','202011455','دلع جلال عمار'],
+  ['1','202110014','لانا محمد اسامه قصيباتي'],['1','202110065','لين مازن حمزه'],['1','202110087','ريناد زهير المصري'],
+  ['1','202110092','غريس انطون نخله'],['1','202110103','محمد امير محمد الملك'],['1','202110127','ألما محمد ياسر العطائي'],
+  ['1','202110312','محمد سعيد يحيى الطباع'],['1','202110362','نور محمد خالد الجبان'],['1','202110374','سدره محمد غياث المؤذن'],
+  ['1','202110443','نادين بديع طرابلسي'],['1','202110534','ميس علي الدهش'],['1','202110552','جودي خالد القاضي'],
+  ['1','202110562','روان بسام الحموي'],['1','202111031','ليلاس حسان محمد صبحي الشمص'],['1','202111147','زينه ميلاد زغيب'],
+  ['1','202111149','زينه محمد عمار الكناني'],['1','202111279','صفاء ايهاب بوارشي'],['1','202111283','ماسة بشار ملحم'],
+  ['1','202111344','مجد حسام القيسي'],['1','202111560','رغد منير شيبون'],['1','202111585','سنا هيثم الخيمي'],
+  ['1','202111596','لين عبد الملك درويش'],['1','202111599','شغاف ماهر عربش'],['1','202111605','صباح خالد دالاتي'],
+  ['1','202111648','حلا علي جنيد'],['1','202111664','نور محمد العيسى'],['1','202120094','لانا باسم حوارنة'],
+  ['1','202120108','ماريا سمير الحلاق'],
+  ['2','201310173','آلاء عبد الهادي الحبال'],['2','201510442','أحمد محمد ماهر مرعي'],['2','201620164','اسراء حسان كنعان'],
+  ['2','201710145','أدهم محفوظ حماده'],['2','201810064','محمدخالد محمدرضوان المؤذن'],['2','201810072','محمد ماجد محمد ماهر القادري'],
+  ['2','201810138','سالي جورج دحدل'],['2','201810143','آلاء ايسر الرفاعي'],['2','201910058','ساره تيسير القرح'],
+  ['2','202010034','لمى احمد بكر'],['2','202010798','نورما محمد بشار ابو زرار'],['2','202010830','طارق زياد أبوزايد'],
+  ['2','202110001','آيه محمد التبني'],['2','202110034','رغد محمد معتز العرودكي'],['2','202110039','يمنى محمد جمال - المصري'],
+  ['2','202110073','جيسيكا سهيل دلول'],['2','202110090','حلا عمار سلامه'],['2','202110109','لونا عبد الرحمن زرقان الفرخ'],
+  ['2','202110122','نغم محمد بسام غزال'],['2','202110148','ماريا قصي فواز السلوم'],['2','202110164','يانا بشار داود'],
+  ['2','202110174','هبه مروان غازي'],['2','202110331','جلنار حسيب ابو فرح'],['2','202110342','دعاء محمد مصطفى تللو النشواتي'],
+  ['2','202110423','راما عبد الحكيم الموعد'],['2','202110525','كلير حسان ابو غنام'],['2','202110641','جلنار محمد النجار'],
+  ['2','202110725','علا ثائر حسين الزعبي'],['2','202110728','ميريل عيسى غنطوس'],['2','202110894','رسيمه محمود البيطار'],
+  ['2','202111310','أسماء أحمد برهوم'],['2','202111361','بتول حسن قاسم'],['2','202111425','هيفين معن نعمو'],
+  ['2','202111524','رهام محمد العودات'],['2','202111575','ليان محمد عماد العش'],['2','202111576','سندس محمد جهاد الخطيب'],
+  ['2','202111602','شيماء ناصر ابو درهمين'],['2','202111612','تقى ماهر اللحام'],['2','202111621','محمود عايش الهارون العلي'],
+  ['2','202210064','هيا محمد غياث الاشرف'],
+  ['3','201320013','مضر فايز - باشا'],['3','201610233','آلاء محي الدين اللبابيدي'],['3','201610661','يوسف عبد الغني الاصيل'],
+  ['3','201710111','هيا عمار جمعة'],['3','201810161','سدرة رشيد الحلو الشهير بالجمال'],['3','201910146','محمد موفق زهير القسطي'],
+  ['3','202110027','ساندي سامر طعمه الحاج'],['3','202110257','مينا سامي يعقوب'],['3','202110821','هيفاء عبدالله خليفه'],
+  ['3','202210101','يحيى محمد ايمن نطفجي'],['3','202210199','نورانا محمد وسيم رمضان'],['3','202210285','سيدرا محمود عيون'],
+  ['3','202210620','ميسم شاكر تونسي'],
+  ['4','201510418','علاء يحيى حمدان'],['4','202010857','أسيم رغدان القباني'],['4','202011099','ساره مصطفى ابراهيم'],
+  ['4','202110235','جودي نبيل حمامية'],['4','202111246','تسنيم محمد الفضل حسنين'],['4','202210098','حلا نوار مبيض'],
+  ['4','202210147','محمد يامن عماد حمصي']
 ];
 
-/* --- Utility: localStorage key for this class --- */
-const STORAGE_PREFIX = "attendance_20251_024528_1_";
+const COURSE_KEY_PREFIX = 'attendance_20251_024528_'; // key prefix for this course in this semester
+let lastTap = 0;
 
-/* --- Render table from any studentsList (array of [id,name]) --- */
-function renderTable(studentsList) {
-  const tbody = document.querySelector("#attendanceTable tbody");
-  tbody.innerHTML = ""; // clear
+document.addEventListener('DOMContentLoaded', () => {
+  const tbody = document.querySelector('#attendanceTable tbody');
+  const sectionSelector = document.getElementById('sectionSelector');
 
-  function loadSavedAttendance(id) {
-    const saved = localStorage.getItem(`${STORAGE_PREFIX}${id}`);
-    return saved ? JSON.parse(saved) : Array(14).fill(false);
+  function loadSavedAttendance(studentId) {
+    const raw = localStorage.getItem(COURSE_KEY_PREFIX + studentId);
+    return raw ? JSON.parse(raw) : Array(14).fill(false);
   }
 
-  studentsList.forEach((student, index) => {
-    const [id, name] = student;
-    const saved = loadSavedAttendance(id);
-    const tr = document.createElement("tr");
+  function saveAttendance(studentId, values) {
+    localStorage.setItem(COURSE_KEY_PREFIX + studentId, JSON.stringify(values));
+  }
 
-    // build checkboxes cells
-    let cells = `
+  function updateTotal(row, studentId) {
+    const checkboxes = row.querySelectorAll('input[type="checkbox"]');
+    const values = [];
+    let total = 0;
+    checkboxes.forEach(cb => { values.push(cb.checked); if (cb.checked) total++; });
+    const totalCell = row.querySelector('.total');
+    if (totalCell) totalCell.textContent = total;
+    saveAttendance(studentId, values);
+  }
+
+  function createRow(sect, studentId, name, index, saved) {
+    const tr = document.createElement('tr');
+    tr.dataset.section = sect;
+    tr.dataset.studentId = studentId;
+
+    tr.innerHTML = `
       <td>${index + 1}</td>
-      <td>${id}</td>
+      <td>${sect}</td>
+      <td>${studentId}</td>
       <td>${name}</td>
       <td class="total">${saved.filter(Boolean).length}</td>
     `;
     for (let i = 0; i < 14; i++) {
-      const checkedAttr = saved[i] ? "checked" : "";
-      // inline onchange calls global updateTotal
-      cells += `<td><input type="checkbox" ${checkedAttr} onchange="updateTotal(this.closest('tr'), '${id}')"></td>`;
+      const td = document.createElement('td');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!saved[i];
+      cb.addEventListener('change', () => updateTotal(tr, studentId));
+      td.appendChild(cb);
+      tr.appendChild(td);
     }
-    tr.innerHTML = cells;
-    tbody.appendChild(tr);
-  });
-}
+    return tr;
+  }
 
-/* --- load/save/update functions (used by inline handlers) --- */
-function loadSavedAttendance(id) {
-  const saved = localStorage.getItem(`${STORAGE_PREFIX}${id}`);
-  return saved ? JSON.parse(saved) : Array(14).fill(false);
-}
-function saveAttendance(id, values) {
-  localStorage.setItem(`${STORAGE_PREFIX}${id}`, JSON.stringify(values));
-}
-function updateTotal(row, id) {
-  const checkboxes = row.querySelectorAll("input[type='checkbox']");
-  const values = [];
-  let total = 0;
-  checkboxes.forEach(cb => { values.push(cb.checked); if (cb.checked) total++; });
-  const totalCell = row.querySelector(".total");
-  if (totalCell) totalCell.textContent = total;
-  saveAttendance(id, values);
-}
-window.updateTotal = updateTotal; // expose for inline onchange
-
-/* --- Sorting: by student name (Arabic) ascending --- */
-function sortByNameAsc() {
-  // create shallow copy to avoid mutating original order permanently
-  const sorted = students.slice().sort((a, b) => {
-    // use localeCompare with 'ar' for Arabic-aware comparison
-    const nameA = a[1].trim();
-    const nameB = b[1].trim();
-    return nameA.localeCompare(nameB, 'ar', { sensitivity: 'base' });
-  });
-  renderTable(sorted);
-}
-
-/* --- Hook up sort button and initial render --- */
-document.addEventListener('DOMContentLoaded', () => {
-  // initial render using original order
-  renderTable(students);
-
-  const sortBtn = document.getElementById('sortByNameBtn');
-  if (sortBtn) {
-    sortBtn.addEventListener('click', () => {
-      sortByNameAsc();
-      sortBtn.disabled = true; // optional: disable to signal it's applied
+  function populateTable() {
+    tbody.innerHTML = '';
+    const selectedSection = sectionSelector.value; // '999' means all
+    let visibleIndex = 0;
+    students.forEach(student => {
+      const [sect, id, name] = student;
+      if (selectedSection !== '999' && selectedSection !== sect) return; // filter
+      const saved = loadSavedAttendance(id);
+      const tr = createRow(sect, id, name, visibleIndex, saved);
+      tbody.appendChild(tr);
+      visibleIndex++;
     });
   }
+
+  // repopulate when section changes
+  sectionSelector.addEventListener('change', populateTable);
+
+  // initial populate
+  populateTable();
+
+  // expose updateTotal for external uses (barcode handler)
+  window.updateTotal = updateTotal;
 });
-
-/* --- keep other functions (CSV, scanner, speech, clear) as before --- */
-/* You should keep your existing functions: downloadCSV, handleCSVUpload,
-   speakSelectedText, clearAttendanceData, startScanner, handleBarcode, etc.
-   They work with the table rows generated by renderTable. */
-
 
 /* --- CSV download / upload --- */
 function downloadCSV() {
-  const rows = document.querySelectorAll("#attendanceTable tbody tr");
-  let header = "رقم,الرقم الجامعي,اسم الطالب,الإجمالي";
+  const rows = document.querySelectorAll('#attendanceTable tbody tr');
+  let header = "رقم,الشعبة,الرقم الجامعي,اسم الطالب,الإجمالي";
   for (let i = 1; i <= 14; i++) header += `,جلسة ${i}`;
   header += "\n";
 
   let csv = header;
-  rows.forEach(row => {
-    const cells = row.querySelectorAll("td");
-    const number = cells[0].textContent.trim();
-    const id = cells[1].textContent.trim();
-    const name = cells[2].textContent.trim();
-    const total = cells[3].textContent.trim();
-    let sessionData = "";
-    for (let i = 4; i < 18; i++) {
-      const input = cells[i].querySelector("input");
-      const checked = input ? input.checked : false;
-      sessionData += `,${checked ? "1" : "0"}`;
+  rows.forEach((row, idx) => {
+    const cells = row.querySelectorAll('td');
+    const number = idx + 1;
+    const sect = cells[1].textContent.trim();
+    const id = cells[2].textContent.trim();
+    const name = cells[3].textContent.trim();
+    const total = cells[4].textContent.trim();
+    let sessionData = '';
+    for (let i = 5; i < cells.length; i++) {
+      const input = cells[i].querySelector('input');
+      sessionData += `,${input && input.checked ? '1' : '0'}`;
     }
-    csv += `${number},${id},"${name}",${total}${sessionData}\n`;
+    csv += `${number},${sect},${id},"${name}",${total}${sessionData}\n`;
   });
 
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const reader = new FileReader();
-  reader.onload = function () {
-    const link = document.createElement("a");
-    link.href = reader.result;
-    link.download = "20251_كيمياء_حيوية_سريرية_(1)_الشعبة_1.csv";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-  reader.readAsDataURL(blob);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = "20251_كيمياء حيوية سريرية (1).csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function handleCSVUpload(event) {
@@ -225,109 +233,120 @@ function handleCSVUpload(event) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = function(e) {
-    const lines = e.target.result.split('\n').map(line => line.trim()).filter(Boolean);
+    const text = e.target.result;
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
     if (lines.length === 0) return;
-    lines.shift(); // remove header
+    // remove header
+    lines.shift();
     lines.forEach(line => {
-      const parts = line.split(',');
-      const id = parts[1];
-      const sessions = parts.slice(4, 18).map(val => val.includes('1'));
-      localStorage.setItem(`attendance_20251_024528_1_${id}`, JSON.stringify(sessions));
+      // simple CSV parse that handles quoted name with commas
+      const parts = [];
+      let cur = '', inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') { inQuotes = !inQuotes; continue; }
+        if (ch === ',' && !inQuotes) { parts.push(cur); cur = ''; continue; }
+        cur += ch;
+      }
+      if (cur !== '') parts.push(cur);
+      if (parts.length < 5) return;
+      const sect = parts[1].trim();
+      const id = parts[2].trim();
+      const sessions = parts.slice(5, 19).map(v => String(v).trim() === '1');
+      while (sessions.length < 14) sessions.push(false);
+      localStorage.setItem(COURSE_KEY_PREFIX + id, JSON.stringify(sessions));
     });
-    event.target.value = "";
+    event.target.value = '';
     location.reload();
   };
   reader.readAsText(file);
 }
 
-/* --- Speech selection --- */
+/* --- Speech selection (mouse & touch) --- */
 function speakSelectedText() {
   const selectedText = window.getSelection().toString().trim();
-  if (selectedText) {
-    try { speechSynthesis.cancel(); } catch (e) {}
-    const utterance = new SpeechSynthesisUtterance(selectedText);
-    utterance.lang = 'ar-SY';
-    speechSynthesis.speak(utterance);
-  }
+  if (!selectedText) return;
+  try { speechSynthesis.cancel(); } catch (e) {}
+  const u = new SpeechSynthesisUtterance(selectedText);
+  u.lang = 'ar-SY';
+  speechSynthesis.speak(u);
 }
 document.addEventListener('mouseup', speakSelectedText);
 document.addEventListener('touchend', speakSelectedText);
 document.addEventListener('touchstart', function () {
-  const currentTime = Date.now();
-  const tapLength = currentTime - lastTap;
-  if (tapLength < 300 && tapLength > 0) speakSelectedText();
-  lastTap = currentTime;
+  const now = Date.now();
+  const dt = now - lastTap;
+  if (dt < 300 && dt > 0) speakSelectedText(); // double-tap
+  lastTap = now;
 });
 
 /* --- Clearing data --- */
 function clearAttendanceData() {
-  const choice = document.getElementById("clearChoice").value;
+  const choice = document.getElementById('clearChoice').value;
+  const semesterToken = '_20251_'; // adjust if semester code changes
+
+  // collect keys first to avoid iteration issues while removing
+  const keysToRemove = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (!key) continue;
-    if ((choice === "1" && key.startsWith("attendance_20251_024528_1_")) ||
-        (choice === "2" && key.startsWith("attendance_20251_024528_")) ||
-        (choice === "3" && key.startsWith("attendance_20251_")) ||
-        (choice === "4" && key.startsWith("attendance_"))) {
-      localStorage.removeItem(key);
-      i--; // adjust index after removal
+    if (choice === '1') {
+      // this course only
+      if (key.startsWith(COURSE_KEY_PREFIX)) keysToRemove.push(key);
+    } else if (choice === '2') {
+      // all courses in this semester
+      if (key.includes(semesterToken)) keysToRemove.push(key);
+    } else if (choice === '3') {
+      // all attendance keys
+      if (key.startsWith('attendance_')) keysToRemove.push(key);
     }
   }
+
+  if (keysToRemove.length === 0) {
+    alert('لا توجد مفاتيح للحذف بناءً على الاختيار.');
+    return;
+  }
+
+  // ask for confirmation (browser confirm)
+  if (!confirm(`سيتم حذف ${keysToRemove.length} عنصر. هل تود المتابعة؟`)) return;
+
+  keysToRemove.forEach(k => localStorage.removeItem(k));
   const messages = {
-    "1": "☑ تم محي سجلات هذه الشعبة.",
-    "2": "☑ تم محي سجلات كل شعب هذا المقرر.",
-    "3": "☑ تم محي سجلات مقررات هذا الفصل.",
-    "4": "☑ تم محي جميع سجلات الحضور."
+    "1": "☑ تم محي سجلات هذا المقرر في هذا الفصل.",
+    "2": "☑ تم محي سجلات مقررات هذا الفصل.",
+    "3": "☑ تم محي سجلات جميع الفصول."
   };
-  alert(messages[choice] || "⮽ اختيار غير صالح. لم يتم المحي.");
+  alert(messages[choice] || 'تمت العملية.');
   location.reload();
 }
 
 /* --- QR / barcode scanner --- */
 function startScanner() {
-  const html5QrCode = new Html5Qrcode("reader");
+  const html5QrCode = new Html5Qrcode('reader');
   html5QrCode.start(
-    { facingMode: "environment" },
+    { facingMode: 'environment' },
     { fps: 10, qrbox: 250, aspectRatio: 1.0, disableFlip: true },
     decodedText => {
-      html5QrCode.stop().then(() => handleBarcode(decodedText)).catch(err => console.error("خطأ في إيقاف الكاميرا:", err));
+      html5QrCode.stop()
+        .then(() => handleBarcode(decodedText))
+        .catch(err => console.error('خطأ في إيقاف الكاميرا:', err));
     },
-    errorMessage => {
-      // optional: console.debug(errorMessage);
-    }
-  ).then(() => {
-    // attempt to apply higher-res constraints; may be ignored by some browsers/devices
-    html5QrCode.applyVideoConstraints({
-      focusMode: "continuous",
-      advanced: [
-        { width: 1920 },
-        { height: 1080 },
-        { zoom: 2.0 },
-        { torch: false }
-      ]
-    }).catch(err => console.warn("تعذر تطبيق قيود الفيديو:", err));
-  }).catch(err => {
-    alert("خطأ في تشغيل الكاميرا: " + err);
-  });
+    errorMessage => { /* optional debug */ }
+  ).catch(err => alert('خطأ في تشغيل الكاميرا: ' + err));
 }
 
 function handleBarcode(barcode) {
-  const sessionIndex = parseInt(document.getElementById("sessionSelector").value, 10);
-  const row = [...document.querySelectorAll("#attendanceTable tbody tr")]
-    .find(tr => tr.children[1].textContent.trim() === barcode);
-  if (row) {
-    const checkboxes = row.querySelectorAll("input[type='checkbox']");
-    const targetCheckbox = checkboxes[sessionIndex];
-    if (targetCheckbox && !targetCheckbox.checked) {
-      targetCheckbox.checked = true;
-      if (typeof window.updateTotal === 'function') window.updateTotal(row, barcode);
-      alert(`✅ تم تسجيل حضور: ${row.children[2].textContent.trim()} في جلسة ${sessionIndex + 1}`);
-    } else {
-      alert(`⚠️ الجلسة ${sessionIndex + 1} مسجلة بالفعل لهذا الطالب.`);
-    }
-  } else {
-    alert(`❌ لم يتم العثور على الرقم الجامعي : ${barcode}`);
-  }
+  const sessionIndex = parseInt(document.getElementById('sessionSelector').value, 10);
+  const rows = [...document.querySelectorAll('#attendanceTable tbody tr')];
+  const row = rows.find(tr => tr.children[2].textContent.trim() === String(barcode));
+  if (!row) { alert(`❌ لم يتم العثور على الرقم الجامعي : ${barcode}`); return; }
+  const checkboxes = row.querySelectorAll('input[type="checkbox"]');
+  const target = checkboxes[sessionIndex];
+  if (!target) { alert('خطأ: فهرس الجلسة غير صالح'); return; }
+  if (target.checked) { alert(`⚠ الجلسة ${sessionIndex + 1} مسجلة بالفعل لهذا الطالب.`); return; }
+  target.checked = true;
+  if (typeof window.updateTotal === 'function') window.updateTotal(row, row.dataset.studentId);
+  alert(`✅ تم تسجيل حضور: ${row.children[3].textContent.trim()} في جلسة ${sessionIndex + 1}`);
 }
 </script>
 </body>
