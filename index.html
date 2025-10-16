@@ -27,6 +27,13 @@
     <option value="4">4 | رنا محمد أبو الخير حلاق</option>
   </select>
 
+  <label for="sortSelector" style="margin-left:12px;">رتب حسب:</label>
+  <select id="sortSelector">
+    <option value="section">الشعبة (تصاعدي)</option>
+    <option value="name">الاسم (أ-ي)</option>
+    <option value="id">الرقم الجامعي (تصاعدي)</option>
+  </select>
+
   <p>المدرس: غسان محمود الشنان, رنا محمد أبو الخير حلاق | الفصل الأول 2025-2026 | رمز المادة: 24528</p>
 
   استرجاع ↑↑
@@ -35,20 +42,11 @@
 
   <label for="sessionSelector">اختر الجلسة لتسجيل الحضور:</label>
   <select id="sessionSelector">
-    <option value="0">جلسة 1</option>
-    <option value="1">جلسة 2</option>
-    <option value="2">جلسة 3</option>
-    <option value="3">جلسة 4</option>
-    <option value="4">جلسة 5</option>
-    <option value="5">جلسة 6</option>
-    <option value="6">جلسة 7</option>
-    <option value="7">جلسة 8</option>
-    <option value="8">جلسة 9</option>
-    <option value="9">جلسة 10</option>
-    <option value="10">جلسة 11</option>
-    <option value="11">جلسة 12</option>
-    <option value="12">جلسة 13</option>
-    <option value="13">جلسة 14</option>
+    <option value="0">جلسة 1</option><option value="1">جلسة 2</option><option value="2">جلسة 3</option>
+    <option value="3">جلسة 4</option><option value="4">جلسة 5</option><option value="5">جلسة 6</option>
+    <option value="6">جلسة 7</option><option value="7">جلسة 8</option><option value="8">جلسة 9</option>
+    <option value="9">جلسة 10</option><option value="10">جلسة 11</option><option value="11">جلسة 12</option>
+    <option value="12">جلسة 13</option><option value="13">جلسة 14</option>
   </select>
 
   <button onclick="startScanner()">بدء المسح بالكاميرا</button>
@@ -57,14 +55,9 @@
   <table id="attendanceTable" aria-label="attendance table">
     <thead>
       <tr>
-        <th>الرقم</th>
-        <th>الشعبة</th>
-        <th>الرقم الجامعي</th>
-        <th>اسم الطالب</th>
-        <th>الإجمالي</th>
-        <th>جلسة 1</th><th>جلسة 2</th><th>جلسة 3</th><th>جلسة 4</th>
-        <th>جلسة 5</th><th>جلسة 6</th><th>جلسة 7</th><th>جلسة 8</th>
-        <th>جلسة 9</th><th>جلسة 10</th><th>جلسة 11</th><th>جلسة 12</th>
+        <th>الرقم</th><th>الشعبة</th><th>الرقم الجامعي</th><th>اسم الطالب</th><th>الإجمالي</th>
+        <th>جلسة 1</th><th>جلسة 2</th><th>جلسة 3</th><th>جلسة 4</th><th>جلسة 5</th><th>جلسة 6</th>
+        <th>جلسة 7</th><th>جلسة 8</th><th>جلسة 9</th><th>جلسة 10</th><th>جلسة 11</th><th>جلسة 12</th>
         <th>جلسة 13</th><th>جلسة 14</th>
       </tr>
     </thead>
@@ -120,18 +113,18 @@ const students = [
   ['4','202210147','محمد يامن عماد حمصي']
 ];
 
-const COURSE_KEY_PREFIX = 'attendance_20251_024528_'; // key prefix for this course in this semester
+const COURSE_KEY_PREFIX = 'attendance_20251_024528_';
 let lastTap = 0;
 
 document.addEventListener('DOMContentLoaded', () => {
   const tbody = document.querySelector('#attendanceTable tbody');
   const sectionSelector = document.getElementById('sectionSelector');
+  const sortSelector = document.getElementById('sortSelector');
 
   function loadSavedAttendance(studentId) {
     const raw = localStorage.getItem(COURSE_KEY_PREFIX + studentId);
     return raw ? JSON.parse(raw) : Array(14).fill(false);
   }
-
   function saveAttendance(studentId, values) {
     localStorage.setItem(COURSE_KEY_PREFIX + studentId, JSON.stringify(values));
   }
@@ -150,7 +143,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const tr = document.createElement('tr');
     tr.dataset.section = sect;
     tr.dataset.studentId = studentId;
-
     tr.innerHTML = `
       <td>${index + 1}</td>
       <td>${sect}</td>
@@ -170,27 +162,42 @@ document.addEventListener('DOMContentLoaded', () => {
     return tr;
   }
 
+  function getFilteredAndSorted() {
+    const selectedSection = sectionSelector.value; // '999' means all
+    const sortBy = sortSelector.value; // 'section' | 'name' | 'id'
+    // filter
+    let list = students.filter(s => selectedSection === '999' || s[0] === selectedSection);
+    // sort ascending
+    if (sortBy === 'section') {
+      list.sort((a,b) => Number(a[0]) - Number(b[0]) || a[2].localeCompare(b[2], 'ar'));
+    } else if (sortBy === 'name') {
+      list.sort((a,b) => a[2].localeCompare(b[2], 'ar'));
+    } else if (sortBy === 'id') {
+      // numeric if possible, otherwise string compare
+      list.sort((a,b) => {
+        const ai = Number(a[1]); const bi = Number(b[1]);
+        if (!isNaN(ai) && !isNaN(bi)) return ai - bi;
+        return a[1].localeCompare(b[1], 'ar');
+      });
+    }
+    return list;
+  }
+
   function populateTable() {
     tbody.innerHTML = '';
-    const selectedSection = sectionSelector.value; // '999' means all
-    let visibleIndex = 0;
-    students.forEach(student => {
+    const list = getFilteredAndSorted();
+    list.forEach((student, idx) => {
       const [sect, id, name] = student;
-      if (selectedSection !== '999' && selectedSection !== sect) return; // filter
       const saved = loadSavedAttendance(id);
-      const tr = createRow(sect, id, name, visibleIndex, saved);
+      const tr = createRow(sect, id, name, idx, saved);
       tbody.appendChild(tr);
-      visibleIndex++;
     });
   }
 
-  // repopulate when section changes
   sectionSelector.addEventListener('change', populateTable);
+  sortSelector.addEventListener('change', populateTable);
 
-  // initial populate
   populateTable();
-
-  // expose updateTotal for external uses (barcode handler)
   window.updateTotal = updateTotal;
 });
 
@@ -236,10 +243,8 @@ function handleCSVUpload(event) {
     const text = e.target.result;
     const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
     if (lines.length === 0) return;
-    // remove header
     lines.shift();
     lines.forEach(line => {
-      // simple CSV parse that handles quoted name with commas
       const parts = [];
       let cur = '', inQuotes = false;
       for (let i = 0; i < line.length; i++) {
@@ -250,7 +255,6 @@ function handleCSVUpload(event) {
       }
       if (cur !== '') parts.push(cur);
       if (parts.length < 5) return;
-      const sect = parts[1].trim();
       const id = parts[2].trim();
       const sessions = parts.slice(5, 19).map(v => String(v).trim() === '1');
       while (sessions.length < 14) sessions.push(false);
@@ -262,7 +266,7 @@ function handleCSVUpload(event) {
   reader.readAsText(file);
 }
 
-/* --- Speech selection (mouse & touch) --- */
+/* --- Speech selection --- */
 function speakSelectedText() {
   const selectedText = window.getSelection().toString().trim();
   if (!selectedText) return;
@@ -274,48 +278,27 @@ function speakSelectedText() {
 document.addEventListener('mouseup', speakSelectedText);
 document.addEventListener('touchend', speakSelectedText);
 document.addEventListener('touchstart', function () {
-  const now = Date.now();
-  const dt = now - lastTap;
-  if (dt < 300 && dt > 0) speakSelectedText(); // double-tap
+  const now = Date.now(); const dt = now - lastTap;
+  if (dt < 300 && dt > 0) speakSelectedText();
   lastTap = now;
 });
 
 /* --- Clearing data --- */
 function clearAttendanceData() {
   const choice = document.getElementById('clearChoice').value;
-  const semesterToken = '_20251_'; // adjust if semester code changes
-
-  // collect keys first to avoid iteration issues while removing
+  const semesterToken = '_20251_';
   const keysToRemove = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (!key) continue;
-    if (choice === '1') {
-      // this course only
-      if (key.startsWith(COURSE_KEY_PREFIX)) keysToRemove.push(key);
-    } else if (choice === '2') {
-      // all courses in this semester
-      if (key.includes(semesterToken)) keysToRemove.push(key);
-    } else if (choice === '3') {
-      // all attendance keys
-      if (key.startsWith('attendance_')) keysToRemove.push(key);
-    }
+    if (choice === '1' && key.startsWith(COURSE_KEY_PREFIX)) keysToRemove.push(key);
+    else if (choice === '2' && key.includes(semesterToken)) keysToRemove.push(key);
+    else if (choice === '3' && key.startsWith('attendance_')) keysToRemove.push(key);
   }
-
-  if (keysToRemove.length === 0) {
-    alert('لا توجد مفاتيح للحذف بناءً على الاختيار.');
-    return;
-  }
-
-  // ask for confirmation (browser confirm)
+  if (keysToRemove.length === 0) { alert('لا توجد مفاتيح للحذف بناءً على الاختيار.'); return; }
   if (!confirm(`سيتم حذف ${keysToRemove.length} عنصر. هل تود المتابعة؟`)) return;
-
   keysToRemove.forEach(k => localStorage.removeItem(k));
-  const messages = {
-    "1": "☑ تم محي سجلات هذا المقرر في هذا الفصل.",
-    "2": "☑ تم محي سجلات مقررات هذا الفصل.",
-    "3": "☑ تم محي سجلات جميع الفصول."
-  };
+  const messages = { "1":"☑ تم محي سجلات هذا المقرر في هذا الفصل.","2":"☑ تم محي سجلات مقررات هذا الفصل.","3":"☑ تم محي سجلات جميع الفصول." };
   alert(messages[choice] || 'تمت العملية.');
   location.reload();
 }
@@ -326,12 +309,8 @@ function startScanner() {
   html5QrCode.start(
     { facingMode: 'environment' },
     { fps: 10, qrbox: 250, aspectRatio: 1.0, disableFlip: true },
-    decodedText => {
-      html5QrCode.stop()
-        .then(() => handleBarcode(decodedText))
-        .catch(err => console.error('خطأ في إيقاف الكاميرا:', err));
-    },
-    errorMessage => { /* optional debug */ }
+    decodedText => { html5QrCode.stop().then(() => handleBarcode(decodedText)).catch(err => console.error('خطأ في إيقاف الكاميرا:', err)); },
+    errorMessage => {}
   ).catch(err => alert('خطأ في تشغيل الكاميرا: ' + err));
 }
 
