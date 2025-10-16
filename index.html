@@ -3,13 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <title>حضور - كيمياء حيوية سريرية (1)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#e0e0e0">
   <style>
     body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; background: #f9f9f9; padding: 20px; }
     table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 13px; }
     th, td { border: 1px solid #ccc; padding: 6px; text-align: center; }
     th { background-color: #e0e0e0; }
-    input[type="checkbox"] { transform: scale(1.2); cursor: pointer; }
+    input[type="checkbox"] { transform: scale(1.15); transform-origin: center; cursor: pointer; -webkit-appearance: checkbox; }
     button, input[type="file"], select { margin-top: 10px; padding: 8px 10px; font-size: 14px; }
     #reader { width: 300px; margin-top: 20px; }
   </style>
@@ -165,15 +167,12 @@ document.addEventListener('DOMContentLoaded', () => {
   function getFilteredAndSorted() {
     const selectedSection = sectionSelector.value; // '999' means all
     const sortBy = sortSelector.value; // 'section' | 'name' | 'id'
-    // filter
     let list = students.filter(s => selectedSection === '999' || s[0] === selectedSection);
-    // sort ascending
     if (sortBy === 'section') {
       list.sort((a,b) => Number(a[0]) - Number(b[0]) || a[2].localeCompare(b[2], 'ar'));
     } else if (sortBy === 'name') {
       list.sort((a,b) => a[2].localeCompare(b[2], 'ar'));
     } else if (sortBy === 'id') {
-      // numeric if possible, otherwise string compare
       list.sort((a,b) => {
         const ai = Number(a[1]); const bi = Number(b[1]);
         if (!isNaN(ai) && !isNaN(bi)) return ai - bi;
@@ -303,15 +302,34 @@ function clearAttendanceData() {
   location.reload();
 }
 
-/* --- QR / barcode scanner --- */
+/* --- Safer scanner for iPhone / fallback handling --- */
 function startScanner() {
-  const html5QrCode = new Html5Qrcode('reader');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert('الكاميرا غير مدعومة في هذا المستعرض. افتح الصفحة عبر HTTPS أو استخدم متصفح حديث.');
+    return;
+  }
+
+  const html5QrCode = new Html5Qrcode("reader", { verbose: false });
+  const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+  // try with exact facingMode first, then fall back if rejected
   html5QrCode.start(
-    { facingMode: 'environment' },
-    { fps: 10, qrbox: 250, aspectRatio: 1.0, disableFlip: true },
-    decodedText => { html5QrCode.stop().then(() => handleBarcode(decodedText)).catch(err => console.error('خطأ في إيقاف الكاميرا:', err)); },
+    { facingMode: { exact: "environment" } },
+    config,
+    decodedText => { html5QrCode.stop().then(() => handleBarcode(decodedText)).catch(()=>{}); },
     errorMessage => {}
-  ).catch(err => alert('خطأ في تشغيل الكاميرا: ' + err));
+  ).catch(() => {
+    // fallback without exact constraint (helps some iOS devices/browsers)
+    html5QrCode.start(
+      { facingMode: "environment" },
+      config,
+      decodedText => { html5QrCode.stop().then(() => handleBarcode(decodedText)).catch(()=>{}); },
+      errorMessage => {}
+    ).catch(err => {
+      alert('تعذر الوصول إلى الكاميرا. افتح الصفحة عبر HTTPS وامنح الإذن للكاميرا.');
+      console.error(err);
+    });
+  });
 }
 
 function handleBarcode(barcode) {
