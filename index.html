@@ -309,92 +309,68 @@ async function startScanner() {
     return;
   }
 
-  const qrContainerId = "reader";
-  const html5QrCode = new Html5Qrcode(qrContainerId, { verbose: false });
+  const containerId = "reader";
+  const html5QrCode = new Html5Qrcode(containerId, { verbose: false });
   const config = { fps: 10, qrbox: { width: 250, height: 250 } };
 
-  // A list of constraint approaches to try, from strict/high-res -> relaxed
-  const constraintAttempts = [
-    // Ask for 1080p explicitly (may be rejected on some devices/browsers)
-    { video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: { exact: "environment" } } },
-    // Ask for high-res but without exact facingMode
-    { video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: "environment" } },
-    // Ask for at least 1280x720
-    { video: { width: { min: 1280 }, height: { min: 720 }, facingMode: "environment" } },
-    // Fallback: environment camera with no resolution hints
-    { video: { facingMode: "environment" } }
-  ];
-
-  // helper: start html5-qrcode with a constraints object using start() overload that accepts constraints
-  async function tryStartWith(constraints) {
+  // Try a simple, broadly supported start first
+  try {
+    await html5QrCode.start(
+      { facingMode: "environment" }, 
+      config,
+      decodedText => { html5QrCode.stop().then(() => handleBarcode(decodedText)).catch(()=>{}); },
+      errorMessage => {}
+    );
+  } catch (err1) {
+    // If that failed, try exact facingMode (some browsers accept exact)
     try {
       await html5QrCode.start(
-        constraints.video || constraints, // html5-qrcode accepts constraints structure
+        { facingMode: { exact: "environment" } },
         config,
         decodedText => { html5QrCode.stop().then(() => handleBarcode(decodedText)).catch(()=>{}); },
-        errorMessage => { /* optional: console.debug(errorMessage); */ }
+        errorMessage => {}
       );
-      return true;
-    } catch (err) {
-      // start failed for this constraint set
-      try { await html5QrCode.stop().catch(()=>{}); } catch(e){}
-      return false;
-    }
-  }
-
-  // try each constraints set until one succeeds
-  let started = false;
-  for (const c of constraintAttempts) {
-    started = await tryStartWith(c);
-    if (started) break;
-  }
-
-  if (!started) {
-    alert('تعذر الوصول إلى الكاميرا. افتح الصفحة عبر HTTPS وامنح الإذن للكاميرا.');
-    return;
-  }
-
-  // After start, attempt to apply stronger video constraints via html5-qrcode.applyVideoConstraints
-  // not all browsers honor these, but it's worth trying to request higher resolution
-  const postConstraints = [
-    { width: 1920, height: 1080, advanced: [{ zoom: 1 }] },
-    { width: 1280, height: 720 },
-  ];
-  for (const pc of postConstraints) {
-    try {
-      await html5QrCode.applyVideoConstraints(pc);
-      // wait a short moment for camera to adjust, then inspect actual stream resolution
-      await new Promise(r => setTimeout(r, 400));
-      // check actual video settings if available
-      const videoElem = document.querySelector(`#${qrContainerId} video`);
-      if (videoElem && videoElem.srcObject && videoElem.srcObject.getVideoTracks) {
-        const track = videoElem.srcObject.getVideoTracks()[0];
-        if (track && track.getSettings) {
-          const s = track.getSettings();
-          // if resolution meets our desire, stop trying further
-          if ((s.width && s.width >= 1280) || (s.height && s.height >= 720)) break;
-        }
-      } else {
-        break; // no video element or settings, stop attempts
+    } catch (err2) {
+      // final fallback: try no facingMode (let the browser pick)
+      try {
+        await html5QrCode.start(
+          true, // allow library to pick default camera
+          config,
+          decodedText => { html5QrCode.stop().then(() => handleBarcode(decodedText)).catch(()=>{}); },
+          errorMessage => {}
+        );
+      } catch (err3) {
+        alert('تعذر الوصول إلى الكاميرا. افتح الصفحة عبر HTTPS وامنح الإذن للكاميرا.');
+        console.error('startScanner errors:', err1, err2, err3);
+        return;
       }
-    } catch (e) {
-      // ignore and try next
     }
   }
 
-  // Optional: show actual chosen resolution in console (for debugging)
+  // After successfully starting, try to nudge resolution upward (may be ignored by some browsers)
   try {
-    const videoElem = document.querySelector(`#${qrContainerId} video`);
-    if (videoElem && videoElem.srcObject) {
+    const preferConstraints = { width: 1920, height: 1080 };
+    await html5QrCode.applyVideoConstraints(preferConstraints);
+    // allow camera a short moment to adjust
+    await new Promise(r => setTimeout(r, 400));
+  } catch (e) {
+    // ignore if not supported or rejected
+  }
+
+  // Inspect and report actual chosen resolution (useful for debugging)
+  try {
+    const videoElem = document.querySelector(`#${containerId} video`);
+    if (videoElem && videoElem.srcObject && videoElem.srcObject.getVideoTracks) {
       const track = videoElem.srcObject.getVideoTracks()[0];
       if (track && track.getSettings) {
-        console.info('Camera settings after start:', track.getSettings());
+        const s = track.getSettings();
+        console.info('Camera actual settings:', s);
       }
     }
   } catch (e) { /* ignore */ }
 }
 
-function handleBarcode(barcode) {
+  function handleBarcode(barcode) {
   const sessionIndex = parseInt(document.getElementById('sessionSelector').value, 10);
   const rows = [...document.querySelectorAll('#attendanceTable tbody tr')];
   const row = rows.find(tr => tr.children[2].textContent.trim() === String(barcode));
