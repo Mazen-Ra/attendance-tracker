@@ -14,6 +14,8 @@
     input[type="checkbox"] { transform: scale(1.15); transform-origin: center; cursor: pointer; -webkit-appearance: checkbox; }
     button, input[type="file"], select { margin-top: 10px; padding: 8px 10px; font-size: 14px; }
     #reader { width: 300px; margin-top: 20px; }
+    #voiceStatus { display:inline-block; margin-right:10px; font-weight:600; color:#333; }
+    #voiceControls { margin-top:10px; }
   </style>
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
@@ -53,6 +55,13 @@
 
   <button onclick="startScanner()">بدء المسح بالكاميرا</button>
   <div id="reader"></div>
+
+  <!-- Voice recognition controls -->
+  <div id="voiceControls" title="عند تفعيل التعرف الصوتي قل اسم الطالب لتسجيل الحضور">
+    <span id="voiceStatus">التعرف الصوتي: متوقف</span>
+    <label><input id="voiceCheckbox" type="checkbox"> تفعيل تسجيل الحضور بالصوت (قل اسم الطالب)</label>
+    <button id="voiceTestBtn" style="margin-right:8px; display:none;">اختبار سماع الاسم</button>
+  </div>
 
   <table id="attendanceTable" aria-label="attendance table">
     <thead>
@@ -119,10 +128,34 @@ const COURSE_KEY_PREFIX = 'attendance_20251_024528_';
 const SEMESTER_KEY_PREFIX = '_20251_';
 let lastTap = 0;
 
+/* --- Speech recognition variables --- */
+let recognition = null;
+let recognizing = false;
+const voiceCheckbox = { el: null };
+const voiceStatusEl = { el: null };
+
+/* Utility: normalize Arabic text for matching */
+function normalizeText(s) {
+  if (!s) return '';
+  // remove diacritics, punctuation, extra spaces and normalize ALEF/YA forms
+  return s.toLowerCase()
+    .replace(/[\u064B-\u0652]/g, '')                // diacritics
+    .replace(/[^\p{L}\p{N}\s\-]/gu, '')              // non-letters/digits/spaces/hyphen
+    .replace(/[إأآا]/g, 'ا')
+    .replace(/[ى]/g, 'ي')
+    .replace(/[ؤ]/g, 'و')
+    .replace(/[ئ]/g, 'ي')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const tbody = document.querySelector('#attendanceTable tbody');
   const sectionSelector = document.getElementById('sectionSelector');
   const sortSelector = document.getElementById('sortSelector');
+
+  voiceCheckbox.el = document.getElementById('voiceCheckbox');
+  voiceStatusEl.el = document.getElementById('voiceStatus');
 
   function loadSavedAttendance(studentId) {
     const raw = localStorage.getItem(COURSE_KEY_PREFIX + studentId);
@@ -199,6 +232,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   populateTable();
   window.updateTotal = updateTotal;
+
+  /* voice checkbox handling */
+  voiceCheckbox.el.addEventListener('change', async (e) => {
+    if (voiceCheckbox.el.checked) {
+      startSpeechRecognition();
+    } else {
+      stopSpeechRecognition();
+    }
+  });
+
 });
 
 /* --- CSV download / upload --- */
@@ -370,7 +413,7 @@ async function startScanner() {
   } catch (e) { /* ignore */ }
 }
 
-  function handleBarcode(barcode) {
+function handleBarcode(barcode) {
   const sessionIndex = parseInt(document.getElementById('sessionSelector').value, 10);
   const rows = [...document.querySelectorAll('#attendanceTable tbody tr')];
   const row = rows.find(tr => tr.children[2].textContent.trim() === String(barcode));
@@ -382,6 +425,120 @@ async function startScanner() {
   target.checked = true;
   if (typeof window.updateTotal === 'function') window.updateTotal(row, row.dataset.studentId);
   alert(`✅ تم تسجيل حضور: ${row.children[3].textContent.trim()} في جلسة ${sessionIndex + 1}`);
+}
+
+/* --- Speech Recognition: enable by checkbox --- */
+function startSpeechRecognition() {
+  const statusEl = document.getElementById('voiceStatus');
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    alert('التعرف الصوتي غير مدعوم في هذا المتصفح.');
+    document.getElementById('voiceCheckbox').checked = false;
+    statusEl.textContent = 'التعرف الصوتي: غير مدعوم';
+    return;
+  }
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.lang = 'ar-SA';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 3;
+  recognition.continuous = true;
+
+  recognition.onstart = () => {
+    recognizing = true;
+    statusEl.textContent = 'التعرف الصوتي: مستمع';
+  };
+
+  recognition.onerror = (event) => {
+    console.warn('recognition error', event.error);
+    // on some recoverable errors, try to continue
+    if (event.error === 'no-speech' || event.error === 'network') {
+      // do nothing, keep listening
+    } else {
+      // stop for other errors
+      stopSpeechRecognition();
+    }
+  };
+
+  recognition.onend = () => {
+    recognizing = false;
+    statusEl.textContent = 'التعرف الصوتي: متوقف';
+    // if checkbox still checked, try to restart to keep listening
+    if (document.getElementById('voiceCheckbox').checked) {
+      try { recognition.start(); } catch (e) { /* ignore */ }
+    }
+  };
+
+  recognition.onresult = (event) => {
+    for (let i = event.resultIndex; i < event.results.length; ++i) {
+      if (event.results[i].isFinal) {
+        const transcript = event.results[i][0].transcript;
+        handleSpokenName(transcript);
+      }
+    }
+  };
+
+  try {
+    recognition.start();
+  } catch (e) {
+    console.warn('recognition start failed', e);
+    recognition = null;
+    document.getElementById('voiceCheckbox').checked = false;
+    statusEl.textContent = 'التعرف الصوتي: فشل البدء';
+  }
+}
+
+function stopSpeechRecognition() {
+  const statusEl = document.getElementById('voiceStatus');
+  if (recognition) {
+    try { recognition.onresult = null; recognition.onend = null; recognition.onerror = null; recognition.stop(); } catch (e) {}
+    recognition = null;
+  }
+  recognizing = false;
+  statusEl.textContent = 'التعرف الصوتي: متوقف';
+}
+
+/* Try to match the spoken name to a student and mark attendance */
+function handleSpokenName(spoken) {
+  const sessionIndex = parseInt(document.getElementById('sessionSelector').value, 10);
+  const normSpoken = normalizeText(spoken);
+  if (!normSpoken) return;
+  // build candidate array: [rowElement, score]
+  const rows = [...document.querySelectorAll('#attendanceTable tbody tr')];
+  let best = null;
+  for (const row of rows) {
+    const name = row.children[3].textContent.trim();
+    const normName = normalizeText(name);
+    // exact substring or vice versa
+    if (normName === normSpoken || normName.includes(normSpoken) || normSpoken.includes(normName)) {
+      best = { row, score: 100 };
+      break;
+    }
+    // token overlap heuristic
+    const tokensSpoken = normSpoken.split(' ');
+    const tokensName = normName.split(' ');
+    let common = 0;
+    for (const t of tokensSpoken) if (tokensName.includes(t)) common++;
+    const score = common;
+    if (common > 0 && (!best || score > best.score)) best = { row, score };
+  }
+
+  if (!best) {
+    alert(`❌ لم يتم التعرف على اسم مطابق: "${spoken}"`);
+    return;
+  }
+
+  const row = best.row;
+  const checkboxes = row.querySelectorAll('input[type="checkbox"]');
+  const target = checkboxes[sessionIndex];
+  if (!target) { alert('خطأ: فهرس الجلسة غير صالح'); return; }
+  if (target.checked) {
+    alert(`⚠ الجلسة ${sessionIndex + 1} مسجلة بالفعل لـ ${row.children[3].textContent.trim()}`);
+    return;
+  }
+  target.checked = true;
+  if (typeof window.updateTotal === 'function') window.updateTotal(row, row.dataset.studentId);
+  alert(`✅ تم تسجيل حضور: ${row.children[3].textContent.trim()} (بواسطة صوتك) في جلسة ${sessionIndex + 1}`);
 }
 </script>
 </body>
