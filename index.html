@@ -116,6 +116,7 @@ const students = [
 ];
 
 const COURSE_KEY_PREFIX = 'attendance_20251_024528_';
+const SEMESTER_KEY_PREFIX = '_20251_';
 let lastTap = 0;
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -285,13 +286,12 @@ document.addEventListener('touchstart', function () {
 /* --- Clearing data --- */
 function clearAttendanceData() {
   const choice = document.getElementById('clearChoice').value;
-  const semesterToken = '_20251_';
   const keysToRemove = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (!key) continue;
     if (choice === '1' && key.startsWith(COURSE_KEY_PREFIX)) keysToRemove.push(key);
-    else if (choice === '2' && key.includes(semesterToken)) keysToRemove.push(key);
+    else if (choice === '2' && key.includes(SEMESTER_KEY_PREFIX)) keysToRemove.push(key);
     else if (choice === '3' && key.startsWith('attendance_')) keysToRemove.push(key);
   }
   if (keysToRemove.length === 0) { alert('لا توجد مفاتيح للحذف بناءً على الاختيار.'); return; }
