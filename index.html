@@ -16,8 +16,6 @@
     #reader { width: 300px; margin-top: 20px; }
     #voiceStatus { display:inline-block; margin-right:10px; font-weight:600; color:#333; }
     #voiceControls { margin-top:10px; }
-    #scannerStatus { display:block; margin-top:8px; font-weight:600; color:#333; }
-    #hqLabel { display:block; margin-top:10px; }
   </style>
   <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
@@ -55,13 +53,7 @@
     <option value="12">جلسة 13</option><option value="13">جلسة 14</option>
   </select>
 
-  <label id="hqLabel" style="display:flex; align-items:center;">
-    <input type="checkbox" id="highQualityToggle" style="margin-left:8px;">
-    تفعيل وضع الدقة العالية (أبطأ لكنه أوضح للباركود)
-  </label>
-
   <button onclick="startScanner()">بدء المسح بالكاميرا</button>
-  <span id="scannerStatus">وضع الماسح: متوقف</span>
   <div id="reader"></div>
 
   <!-- Voice recognition controls -->
@@ -145,6 +137,7 @@ const voiceStatusEl = { el: null };
 /* Utility: normalize Arabic text for matching */
 function normalizeText(s) {
   if (!s) return '';
+  // remove diacritics, punctuation, extra spaces and normalize ALEF/YA forms
   return s.toLowerCase()
     .replace(/[\u064B-\u0652]/g, '')                // diacritics
     .replace(/[^\p{L}\p{N}\s\-]/gu, '')              // non-letters/digits/spaces/hyphen
@@ -352,189 +345,76 @@ function clearAttendanceData() {
   location.reload();
 }
 
-/* --- Modular camera / scanner helpers --- */
-
-function getVideoConstraints() {
-  const highQuality = document.getElementById('highQualityToggle')?.checked;
-  // prefer wide resolution for HQ mode; otherwise medium resolution for speed
-  return highQuality
-    ? { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } }
-    : { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } };
-}
-
-async function tryGetUserMedia(constraints) {
-  try {
-    return await navigator.mediaDevices.getUserMedia({ video: constraints });
-  } catch (e) {
-    throw e;
-  }
-}
-
-async function getBestCameraStream() {
-  // 1) Try preferred constraints (which include quality toggle)
-  const preferred = getVideoConstraints();
-  try {
-    const s = await tryGetUserMedia(preferred);
-    return s;
-  } catch (err1) {
-    console.warn('Preferred constraints failed:', err1);
-  }
-
-  // 2) Try facingMode environment (broadly supported)
-  try {
-    const s = await tryGetUserMedia({ facingMode: "environment" });
-    return s;
-  } catch (err2) {
-    console.warn('Environment facingMode failed:', err2);
-  }
-
-  // 3) Try allowing browser to pick any camera
-  try {
-    const s = await tryGetUserMedia(true);
-    return s;
-  } catch (err3) {
-    console.error('All getUserMedia attempts failed', err3);
-    throw new Error('camera-access-failed');
-  }
-}
-
-function logActualCameraSettings(stream) {
-  try {
-    const track = stream.getVideoTracks()[0];
-    if (!track) return null;
-    const settings = track.getSettings ? track.getSettings() : null;
-    console.info('Camera actual settings:', settings);
-    return settings;
-  } catch (e) {
-    console.warn('Failed to read track settings:', e);
-    return null;
-  }
-}
-
-function isSamsungDevice() {
-  return /Samsung|SM-|Galaxy/i.test(navigator.userAgent);
-}
-
-let currentHtml5QrCode = null;
-let currentStream = null;
-
-/* --- Integrated and modular startScanner() --- */
+/* --- Safer scanner for iPhone / fallback handling --- */
 async function startScanner() {
-  const statusEl = document.getElementById('scannerStatus');
-  statusEl.textContent = 'وضع الماسح: جارٍ التهيئة...';
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     alert('الكاميرا غير مدعومة في هذا المستعرض. افتح الصفحة عبر HTTPS أو استخدم متصفح حديث.');
-    statusEl.textContent = 'وضع الماسح: غير مدعوم';
     return;
   }
-
-  // stop previous instance if any
-  try { if (currentHtml5QrCode) { await currentHtml5QrCode.stop(); } } catch (e) {}
-  if (currentStream) {
-    try { currentStream.getTracks().forEach(t => t.stop()); } catch (e) {}
-    currentStream = null;
-  }
-  currentHtml5QrCode = null;
 
   const containerId = "reader";
   const html5QrCode = new Html5Qrcode(containerId, { verbose: false });
-  currentHtml5QrCode = html5QrCode;
-
   const config = { fps: 10, qrbox: { width: 250, height: 250 } };
 
-  // Samsung-specific note (helps debugging)
-  if (isSamsungDevice()) console.warn('Samsung device detected — will attempt stronger resolution negotiation.');
-
-  // Acquire best-possible stream using modular negotiation
-  let stream;
-  try {
-    stream = await getBestCameraStream();
-  } catch (e) {
-    alert('تعذر الوصول إلى الكاميرا. تأكد من الإذن واستخدام HTTPS.');
-    statusEl.textContent = 'وضع الماسح: فشل الوصول إلى الكاميرا';
-    return;
-  }
-  currentStream = stream;
-
-  // Optionally try to raise constraints on the obtained track (may be ignored)
-  try {
-    const track = stream.getVideoTracks()[0];
-    if (track && track.applyConstraints) {
-      const highQuality = document.getElementById('highQualityToggle')?.checked;
-      const tryConstraints = highQuality ? { width: 1920, height: 1080 } : { width: 1280, height: 720 };
-      try { await track.applyConstraints(tryConstraints); } catch (e) { /* non-fatal */ }
-    }
-  } catch (e) { /* ignore */ }
-
-  // Log actual chosen resolution
-  const settings = logActualCameraSettings(stream);
-  if (settings && (settings.width < 640 || settings.height < 480)) {
-    alert(`⚠ دقة الكاميرا منخفضة (${settings.width || '?'}×${settings.height || '?'}). قد لا يتم التعرف على الباركود بشكل جيد.`);
-  }
-
-  // Start html5-qrcode using the already-obtained MediaStream
-  statusEl.textContent = 'وضع الماسح: تشغيل الماسح...';
+  // Try a simple, broadly supported start first
   try {
     await html5QrCode.start(
-      stream,
+      { facingMode: "environment" }, 
       config,
-      decodedText => {
-        html5QrCode.stop().then(() => {
-          currentHtml5QrCode = null;
-          // stop stream tracks to release camera
-          try { stream.getTracks().forEach(t => t.stop()); } catch (e) {}
-          currentStream = null;
-          handleBarcode(decodedText);
-        }).catch(()=>{});
-      },
-      errorMessage => {
-        // suppressed decode errors; keep scanning
-      }
+      decodedText => { html5QrCode.stop().then(() => handleBarcode(decodedText)).catch(()=>{}); },
+      errorMessage => {}
     );
-    // small delay to allow camera to settle
-    await new Promise(r => setTimeout(r, 300));
-    statusEl.textContent = 'وضع الماسح: يعمل';
-  } catch (startErr) {
-    // Fallback: try html5QrCode.start with constraint objects directly (some browsers require constraints here)
-    console.warn('Initial html5QrCode.start failed, trying fallback start with constraint objects', startErr);
+  } catch (err1) {
+    // If that failed, try exact facingMode (some browsers accept exact)
     try {
-      // attempt preferred constraints from getVideoConstraints()
-      const prefer = getVideoConstraints();
-      await html5QrCode.start(
-        prefer,
-        config,
-        decodedText => { html5QrCode.stop().then(() => handleBarcode(decodedText)).catch(()=>{}); },
-        errorMessage => {}
-      );
-      statusEl.textContent = 'وضع الماسح: يعمل (بنسق بديل)';
-    } catch (fallbackErr) {
-      alert('فشل بدء الماسح. تأكد من أذونات الكاميرا وجرب متصفح آخر مثل Samsung Internet.');
-      statusEl.textContent = 'وضع الماسح: فشل';
-      console.error('Scanner start failures:', startErr, fallbackErr);
-      try { if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; } } catch(e){}
-      currentHtml5QrCode = null;
-      return;
+          await html5QrCode.start(
+            {
+              facingMode: "environment",
+              width: { ideal: 1920 },
+              height: { ideal: 1080 }
+            },
+            config,
+            decodedText => { html5QrCode.stop().then(() => handleBarcode(decodedText)).catch(()=>{}); },
+            errorMessage => {}
+          );
+    } catch (err2) {
+      // final fallback: try no facingMode (let the browser pick)
+      try {
+        await html5QrCode.start(
+          true, // allow library to pick default camera
+          config,
+          decodedText => { html5QrCode.stop().then(() => handleBarcode(decodedText)).catch(()=>{}); },
+          errorMessage => {}
+        );
+      } catch (err3) {
+        alert('تعذر الوصول إلى الكاميرا. افتح الصفحة عبر HTTPS وامنح الإذن للكاميرا.');
+        console.error('startScanner errors:', err1, err2, err3);
+        return;
+      }
     }
   }
 
-  // If Samsung detected and resolution seems low, suggest switching lens (move phone slightly back) — console note only
-  if (isSamsungDevice() && settings && settings.width && settings.width < 1000) {
-    console.warn('On Samsung device the chosen camera resolution is low; advise user to move phone slightly away to avoid macro lens selection.');
+  // After successfully starting, try to nudge resolution upward (may be ignored by some browsers)
+  try {
+    const preferConstraints = { width: 1920, height: 1080 };
+    await html5QrCode.applyVideoConstraints(preferConstraints);
+    // allow camera a short moment to adjust
+    await new Promise(r => setTimeout(r, 400));
+  } catch (e) {
+    // ignore if not supported or rejected
   }
-}
 
-/* Stop scanner helper (can be used externally) */
-async function stopScanner() {
-  const statusEl = document.getElementById('scannerStatus');
-  if (currentHtml5QrCode) {
-    try { await currentHtml5QrCode.stop(); } catch (e) {}
-    currentHtml5QrCode = null;
-  }
-  if (currentStream) {
-    try { currentStream.getTracks().forEach(t => t.stop()); } catch (e) {}
-    currentStream = null;
-  }
-  statusEl.textContent = 'وضع الماسح: متوقف';
+  // Inspect and report actual chosen resolution (useful for debugging)
+  try {
+    const videoElem = document.querySelector(`#${containerId} video`);
+    if (videoElem && videoElem.srcObject && videoElem.srcObject.getVideoTracks) {
+      const track = videoElem.srcObject.getVideoTracks()[0];
+      if (track && track.getSettings) {
+        const s = track.getSettings();
+        console.info('Camera actual settings:', s);
+      }
+    }
+  } catch (e) { /* ignore */ }
 }
 
 function handleBarcode(barcode) {
@@ -575,9 +455,11 @@ function startSpeechRecognition() {
 
   recognition.onerror = (event) => {
     console.warn('recognition error', event.error);
+    // on some recoverable errors, try to continue
     if (event.error === 'no-speech' || event.error === 'network') {
-      // keep listening
+      // do nothing, keep listening
     } else {
+      // stop for other errors
       stopSpeechRecognition();
     }
   };
@@ -585,6 +467,7 @@ function startSpeechRecognition() {
   recognition.onend = () => {
     recognizing = false;
     statusEl.textContent = 'التعرف الصوتي: متوقف';
+    // if checkbox still checked, try to restart to keep listening
     if (document.getElementById('voiceCheckbox').checked) {
       try { recognition.start(); } catch (e) { /* ignore */ }
     }
@@ -624,15 +507,18 @@ function handleSpokenName(spoken) {
   const sessionIndex = parseInt(document.getElementById('sessionSelector').value, 10);
   const normSpoken = normalizeText(spoken);
   if (!normSpoken) return;
+  // build candidate array: [rowElement, score]
   const rows = [...document.querySelectorAll('#attendanceTable tbody tr')];
   let best = null;
   for (const row of rows) {
     const name = row.children[3].textContent.trim();
     const normName = normalizeText(name);
+    // exact substring or vice versa
     if (normName === normSpoken || normName.includes(normSpoken) || normSpoken.includes(normName)) {
       best = { row, score: 100 };
       break;
     }
+    // token overlap heuristic
     const tokensSpoken = normSpoken.split(' ');
     const tokensName = normName.split(' ');
     let common = 0;
@@ -661,4 +547,3 @@ function handleSpokenName(spoken) {
 </script>
 </body>
 </html>
-```
