@@ -17,12 +17,15 @@
     #reader video { width:100%; height:100%; object-fit:cover; display:block; }
     #voiceStatus { display:inline-block; margin-right:10px; font-weight:600; color:#333; }
     #voiceControls { margin-top:10px; }
+    #engineLabel { margin-left: 10px; font-weight:600; }
   </style>
 
-  <!-- primary library -->
+  <!-- Html5Qrcode primary -->
   <script src="https://unpkg.com/html5-qrcode"></script>
-  <!-- fallback library (used only if Html5Qrcode fails) -->
+  <!-- ZXing fallback -->
   <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
+  <!-- QuaggaJS option -->
+  <script src="https://unpkg.com/quagga@0.12.1/dist/quagga.min.js"></script>
 </head>
 <body>
   <h2>حضور - كيمياء حيوية سريرية (1)</h2>
@@ -58,10 +61,17 @@
     <option value="12">جلسة 13</option><option value="13">جلسة 14</option>
   </select>
 
+  <label id="engineLabel" for="engineSelector">اختر محرك المسح:</label>
+  <select id="engineSelector" title="اختر المحرك: Html5Qrcode سريع للـ QR، ZXing جيد للباركود المتعدد، QuaggaJS للباركود المستقر">
+    <option value="html5qrcode">Html5Qrcode (QR أفضل)</option>
+    <option value="zxing">ZXing-js (قوي ومتعدد الصيغ)</option>
+    <option value="quagga">QuaggaJS (باركود 1D)</option>
+  </select>
+
   <button id="startBtn" onclick="startScanner()">بدء المسح بالكاميرا</button>
   <button id="stopBtn" onclick="stopScanner()" style="display:none">■ إيقاف المسح</button>
   <div id="reader">
-    <!-- Html5Qrcode will inject its UI inside #reader. ZXing fallback will use the video element below. -->
+    <!-- Html5Qrcode injects UI here. ZXing and Quagga will use the video element. -->
     <video id="zxingVideo" playsinline autoplay muted style="display:none"></video>
   </div>
 
@@ -140,6 +150,13 @@ let lastTap = 0;
 /* --- Speech recognition variables --- */
 let recognition = null;
 let recognizing = false;
+
+/* Scanner engine state */
+let currentEngine = null; // 'html5qrcode' | 'zxing' | 'quagga'
+let _html5QrCode = null;
+let _zxingReader = null;
+let _zxingDeviceId = null;
+let quaggaRunning = false;
 
 /* Utility: normalize Arabic text for matching */
 function normalizeText(s) {
@@ -343,93 +360,47 @@ function clearAttendanceData() {
   location.reload();
 }
 
-/* --- Scanner: try Html5Qrcode first, fallback to ZXing-js --- */
+/* --- Scanner engine selection helpers --- */
+function toggleStartStopButtons(running) {
+  document.getElementById('startBtn').style.display = running ? 'none' : 'inline-block';
+  document.getElementById('stopBtn').style.display = running ? 'inline-block' : 'none';
+}
 
-let _html5QrCode = null;
-let _zxingReader = null;
-let _zxingDeviceId = null;
-
+/* High-level start: chooses engine by selector */
 async function startScanner() {
-  document.getElementById('startBtn').style.display = 'none';
-  document.getElementById('stopBtn').style.display = 'inline-block';
+  const engine = document.getElementById('engineSelector').value;
+  currentEngine = engine;
+  toggleStartStopButtons(true);
 
+  // check camera support early
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     alert('الكاميرا غير مدعومة في هذا المستعرض. افتح الصفحة عبر HTTPS أو استخدم متصفح حديث.');
     toggleStartStopButtons(false);
     return;
   }
 
-  // Try Html5Qrcode if available
-  if (window.Html5Qrcode) {
-    try {
-      _html5QrCode = new Html5Qrcode("reader", { verbose: false });
-      await _html5QrCode.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0, disableFlip: true },
-        decodedText => {
-          // stop and handle
-          try { _html5QrCode.stop().then(() => _html5QrCode.clear()).catch(()=>{}); } catch(e){}
-          _html5QrCode = null;
-          handleBarcode(decodedText);
-          toggleStartStopButtons(false);
-        },
-        () => {}
-      );
-      // try to apply higher-res constraints (best-effort)
-      try { await _html5QrCode.applyVideoConstraints({ width: 1280, height: 720 }); } catch (e) {}
-      return;
-    } catch (e) {
-      console.warn('Html5Qrcode failed to start, falling back to ZXing-js:', e);
-      try { if (_html5QrCode) { _html5QrCode.clear(); _html5QrCode = null; } } catch(e){}
-    }
-  } else {
-    console.warn('Html5Qrcode not loaded; using ZXing fallback.');
-  }
-
-  // ZXing fallback
-  startZxingScanner();
-}
-
-function toggleStartStopButtons(running) {
-  document.getElementById('startBtn').style.display = running ? 'none' : 'inline-block';
-  document.getElementById('stopBtn').style.display = running ? 'inline-block' : 'none';
-}
-
-async function startZxingScanner() {
-  const video = document.getElementById('zxingVideo');
-  // show video for ZXing
-  video.style.display = 'block';
-  // ensure ZXing library is present
-  if (!window.ZXing || !ZXing.BrowserMultiFormatReader) {
-    alert('لا يمكن فتح الماسح. مكتبة ZXing غير محملة.');
-    toggleStartStopButtons(false);
-    return;
-  }
-
   try {
-    _zxingReader = new ZXing.BrowserMultiFormatReader();
-    const devices = await _zxingReader.listVideoInputDevices();
-    if (devices && devices.length) {
-      const env = devices.find(d => /back|rear|environment/i.test(d.label));
-      _zxingDeviceId = env ? env.deviceId : devices[0].deviceId;
+    if (engine === 'html5qrcode') {
+      await startHtml5Qrcode();
+      return;
+    } else if (engine === 'zxing') {
+      await startZxingScanner();
+      return;
+    } else if (engine === 'quagga') {
+      await startQuaggaScanner();
+      return;
     } else {
-      _zxingDeviceId = undefined;
+      alert('محرك غير معروف.');
+      toggleStartStopButtons(false);
     }
-
-    _zxingReader.decodeFromVideoDevice(_zxingDeviceId, video, (result, err) => {
-      if (result) {
-        stopScanner();
-        handleBarcode(result.getText());
-      }
-      // ignore transient errors
-    });
   } catch (e) {
-    console.error('خطأ في تشغيل ZXing-js:', e);
-    alert('خطأ في تشغيل الكاميرا بالمسح البديل: ' + e);
+    console.warn('Start scanner failed for engine', engine, e);
+    alert('فشل بدء الماسح: ' + e);
     toggleStartStopButtons(false);
   }
 }
 
+/* Stop currently running engine */
 function stopScanner() {
   // stop Html5Qrcode if present
   try {
@@ -444,19 +415,127 @@ function stopScanner() {
     if (_zxingReader && typeof _zxingReader.reset === 'function') _zxingReader.reset();
   } catch (e) {}
 
+  // stop Quagga
+  try {
+    if (quaggaRunning && window.Quagga && Quagga.stop) Quagga.stop();
+  } catch (e) {}
+
   // stop any media tracks on zxingVideo
   try {
     const video = document.getElementById('zxingVideo');
-    const stream = video && (video.srcObject || video.captureStream && video.captureStream()) || null;
-    if (stream && stream.getTracks) {
-      stream.getTracks().forEach(t => t.stop());
-    }
+    const stream = video && (video.srcObject || (video.captureStream && video.captureStream())) || null;
+    if (stream && stream.getTracks) stream.getTracks().forEach(t => t.stop());
     if (video) { video.pause(); video.srcObject = null; video.style.display = 'none'; }
   } catch (e) {}
 
   _html5QrCode = null;
   _zxingReader = null;
+  quaggaRunning = false;
+  currentEngine = null;
   toggleStartStopButtons(false);
+}
+
+/* --- Html5Qrcode engine --- */
+async function startHtml5Qrcode() {
+  const readerDiv = document.getElementById('reader');
+  // clear any injected UI (Html5Qrcode requires a clean container)
+  readerDiv.innerHTML = '<div id="html5qr-container"></div><video id="zxingVideo" playsinline autoplay muted style="display:none"></video>';
+  _html5QrCode = new Html5Qrcode("html5qr-container", { verbose: false });
+
+  await _html5QrCode.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0, disableFlip: true },
+    decodedText => {
+      // stop and handle
+      try { _html5QrCode.stop().then(() => _html5QrCode.clear()).catch(()=>{}); } catch(e){}
+      _html5QrCode = null;
+      handleBarcode(decodedText);
+      toggleStartStopButtons(false);
+    },
+    () => {}
+  ).catch(err => { throw err; });
+
+  // best-effort apply constraints
+  try { await _html5QrCode.applyVideoConstraints({ width: 1280, height: 720 }); } catch (e) {}
+}
+
+/* --- ZXing-js engine --- */
+async function startZxingScanner() {
+  const video = document.getElementById('zxingVideo');
+  video.style.display = 'block';
+
+  if (!window.ZXing || !ZXing.BrowserMultiFormatReader) {
+    throw 'مكتبة ZXing غير محملة.';
+  }
+
+  _zxingReader = new ZXing.BrowserMultiFormatReader();
+  const devices = await _zxingReader.listVideoInputDevices();
+  if (devices && devices.length) {
+    const env = devices.find(d => /back|rear|environment/i.test(d.label));
+    _zxingDeviceId = env ? env.deviceId : devices[0].deviceId;
+  } else {
+    _zxingDeviceId = undefined;
+  }
+
+  _zxingReader.decodeFromVideoDevice(_zxingDeviceId, video, (result, err) => {
+    if (result) {
+      stopScanner();
+      handleBarcode(result.getText());
+    }
+    // ignore transient errors
+  });
+}
+
+/* --- QuaggaJS engine --- */
+async function startQuaggaScanner() {
+  if (!window.Quagga) throw 'مكتبة Quagga غير محملة.';
+  const videoEl = document.getElementById('zxingVideo');
+  videoEl.style.display = 'block';
+  quaggaRunning = false;
+
+  // Quagga configuration (1D barcodes oriented horizontally)
+  const config = {
+    inputStream: {
+      name: "Live",
+      type: "LiveStream",
+      target: document.querySelector('#reader'),
+      constraints: {
+        facingMode: "environment",
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    },
+    locator: { patchSize: "medium", halfSample: true },
+    numOfWorkers: navigator.hardwareConcurrency ? Math.max(1, Math.min(4, navigator.hardwareConcurrency - 1)) : 2,
+    locate: true,
+    decoder: {
+      readers: ["code_128_reader", "ean_reader", "ean_8_reader", "code_39_reader", "upc_reader", "upc_e_reader"]
+    }
+  };
+
+  return new Promise((resolve, reject) => {
+    try {
+      Quagga.init(config, function(err) {
+        if (err) { reject(err); return; }
+        Quagga.onDetected(function(result) {
+          if (result && result.codeResult && result.codeResult.code) {
+            const code = result.codeResult.code;
+            Quagga.offDetected && Quagga.offDetected();
+            // stop Quagga then handle
+            try { Quagga.stop(); } catch(e){}
+            quaggaRunning = false;
+            handleBarcode(code);
+            toggleStartStopButtons(false);
+          }
+        });
+        Quagga.start();
+        quaggaRunning = true;
+        resolve();
+      });
+    } catch (e) {
+      reject(e);
+    }
+  });
 }
 
 /* --- Barcode handling --- */
@@ -562,4 +641,3 @@ function handleSpokenName(spoken) {
 </script>
 </body>
 </html>
-```
