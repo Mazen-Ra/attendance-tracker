@@ -13,11 +13,16 @@
     th { background-color: #e0e0e0; }
     input[type="checkbox"] { transform: scale(1.15); transform-origin: center; cursor: pointer; -webkit-appearance: checkbox; }
     button, input[type="file"], select { margin-top: 10px; padding: 8px 10px; font-size: 14px; }
-    #reader { width: 300px; margin-top: 20px; }
+    #reader { width: 300px; margin-top: 20px; position:relative; }
+    #reader video { width:100%; height:100%; object-fit:cover; display:block; }
     #voiceStatus { display:inline-block; margin-right:10px; font-weight:600; color:#333; }
     #voiceControls { margin-top:10px; }
   </style>
+
+  <!-- primary library -->
   <script src="https://unpkg.com/html5-qrcode"></script>
+  <!-- fallback library (used only if Html5Qrcode fails) -->
+  <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
 </head>
 <body>
   <h2>حضور - كيمياء حيوية سريرية (1)</h2>
@@ -53,8 +58,12 @@
     <option value="12">جلسة 13</option><option value="13">جلسة 14</option>
   </select>
 
-  <button onclick="startScanner()">بدء المسح بالكاميرا</button>
-  <div id="reader"></div>
+  <button id="startBtn" onclick="startScanner()">بدء المسح بالكاميرا</button>
+  <button id="stopBtn" onclick="stopScanner()" style="display:none">■ إيقاف المسح</button>
+  <div id="reader">
+    <!-- Html5Qrcode will inject its UI inside #reader. ZXing fallback will use the video element below. -->
+    <video id="zxingVideo" playsinline autoplay muted style="display:none"></video>
+  </div>
 
   <!-- Voice recognition controls -->
   <div id="voiceControls" title="عند تفعيل التعرف الصوتي قل اسم الطالب لتسجيل الحضور">
@@ -131,20 +140,17 @@ let lastTap = 0;
 /* --- Speech recognition variables --- */
 let recognition = null;
 let recognizing = false;
-const voiceCheckbox = { el: null };
-const voiceStatusEl = { el: null };
 
 /* Utility: normalize Arabic text for matching */
 function normalizeText(s) {
   if (!s) return '';
-  // remove diacritics, punctuation, extra spaces and normalize ALEF/YA forms
   return s.toLowerCase()
-    .replace(/[\u064B-\u0652]/g, '')                // diacritics
-    .replace(/[^\p{L}\p{N}\s\-]/gu, '')              // non-letters/digits/spaces/hyphen
-    .replace(/[إأآا]/g, 'ا')
-    .replace(/[ى]/g, 'ي')
-    .replace(/[ؤ]/g, 'و')
-    .replace(/[ئ]/g, 'ي')
+    .replace(/[\u064B-\u0652]/g, '')
+    .replace(/[^\p{L}\p{N}\s\-]/gu, '')
+    .replace(/[\u0625\u0623\u0622\u0627]/g, '\u0627')
+    .replace(/[\u0649]/g, '\u064a')
+    .replace(/[\u0624]/g, '\u0648')
+    .replace(/[\u0626]/g, '\u064a')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -153,9 +159,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const tbody = document.querySelector('#attendanceTable tbody');
   const sectionSelector = document.getElementById('sectionSelector');
   const sortSelector = document.getElementById('sortSelector');
-
-  voiceCheckbox.el = document.getElementById('voiceCheckbox');
-  voiceStatusEl.el = document.getElementById('voiceStatus');
 
   function loadSavedAttendance(studentId) {
     const raw = localStorage.getItem(COURSE_KEY_PREFIX + studentId);
@@ -199,8 +202,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function getFilteredAndSorted() {
-    const selectedSection = sectionSelector.value; // '999' means all
-    const sortBy = sortSelector.value; // 'section' | 'name' | 'id'
+    const selectedSection = sectionSelector.value;
+    const sortBy = sortSelector.value;
     let list = students.filter(s => selectedSection === '999' || s[0] === selectedSection);
     if (sortBy === 'section') {
       list.sort((a,b) => Number(a[0]) - Number(b[0]) || a[2].localeCompare(b[2], 'ar'));
@@ -234,14 +237,9 @@ document.addEventListener('DOMContentLoaded', () => {
   window.updateTotal = updateTotal;
 
   /* voice checkbox handling */
-  voiceCheckbox.el.addEventListener('change', async (e) => {
-    if (voiceCheckbox.el.checked) {
-      startSpeechRecognition();
-    } else {
-      stopSpeechRecognition();
-    }
+  document.getElementById('voiceCheckbox').addEventListener('change', (e) => {
+    if (e.target.checked) startSpeechRecognition(); else stopSpeechRecognition();
   });
-
 });
 
 /* --- CSV download / upload --- */
@@ -345,78 +343,123 @@ function clearAttendanceData() {
   location.reload();
 }
 
-/* --- Safer scanner for iPhone / fallback handling --- */
+/* --- Scanner: try Html5Qrcode first, fallback to ZXing-js --- */
+
+let _html5QrCode = null;
+let _zxingReader = null;
+let _zxingDeviceId = null;
+
 async function startScanner() {
+  document.getElementById('startBtn').style.display = 'none';
+  document.getElementById('stopBtn').style.display = 'inline-block';
+
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     alert('الكاميرا غير مدعومة في هذا المستعرض. افتح الصفحة عبر HTTPS أو استخدم متصفح حديث.');
+    toggleStartStopButtons(false);
     return;
   }
 
-  const containerId = "reader";
-  const html5QrCode = new Html5Qrcode(containerId, { verbose: false });
-  const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-
-  // Try a simple, broadly supported start first
-  try {
-    await html5QrCode.start(
-      { facingMode: "environment" }, 
-      config,
-      decodedText => { html5QrCode.stop().then(() => handleBarcode(decodedText)).catch(()=>{}); },
-      errorMessage => {}
-    );
-  } catch (err1) {
-    // If that failed, try exact facingMode (some browsers accept exact)
+  // Try Html5Qrcode if available
+  if (window.Html5Qrcode) {
     try {
-          await html5QrCode.start(
-            {
-              facingMode: "environment",
-              width: { ideal: 1920 },
-              height: { ideal: 1080 }
-            },
-            config,
-            decodedText => { html5QrCode.stop().then(() => handleBarcode(decodedText)).catch(()=>{}); },
-            errorMessage => {}
-          );
-    } catch (err2) {
-      // final fallback: try no facingMode (let the browser pick)
-      try {
-        await html5QrCode.start(
-          true, // allow library to pick default camera
-          config,
-          decodedText => { html5QrCode.stop().then(() => handleBarcode(decodedText)).catch(()=>{}); },
-          errorMessage => {}
-        );
-      } catch (err3) {
-        alert('تعذر الوصول إلى الكاميرا. افتح الصفحة عبر HTTPS وامنح الإذن للكاميرا.');
-        console.error('startScanner errors:', err1, err2, err3);
-        return;
-      }
+      _html5QrCode = new Html5Qrcode("reader", { verbose: false });
+      await _html5QrCode.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0, disableFlip: true },
+        decodedText => {
+          // stop and handle
+          try { _html5QrCode.stop().then(() => _html5QrCode.clear()).catch(()=>{}); } catch(e){}
+          _html5QrCode = null;
+          handleBarcode(decodedText);
+          toggleStartStopButtons(false);
+        },
+        () => {}
+      );
+      // try to apply higher-res constraints (best-effort)
+      try { await _html5QrCode.applyVideoConstraints({ width: 1280, height: 720 }); } catch (e) {}
+      return;
+    } catch (e) {
+      console.warn('Html5Qrcode failed to start, falling back to ZXing-js:', e);
+      try { if (_html5QrCode) { _html5QrCode.clear(); _html5QrCode = null; } } catch(e){}
     }
+  } else {
+    console.warn('Html5Qrcode not loaded; using ZXing fallback.');
   }
 
-  // After successfully starting, try to nudge resolution upward (may be ignored by some browsers)
-  try {
-    const preferConstraints = { width: 1920, height: 1080 };
-    await html5QrCode.applyVideoConstraints(preferConstraints);
-    // allow camera a short moment to adjust
-    await new Promise(r => setTimeout(r, 400));
-  } catch (e) {
-    // ignore if not supported or rejected
-  }
-
-  // Inspect and report actual chosen resolution (useful for debugging)
-  try {
-    const videoElem = document.querySelector(`#${containerId} video`);
-    if (videoElem && videoElem.srcObject && videoElem.srcObject.getVideoTracks) {
-      const track = videoElem.srcObject.getVideoTracks()[0];
-      if (track && track.getSettings) {
-        const s = track.getSettings();
-        console.info('Camera actual settings:', s);
-      }
-    }
-  } catch (e) { /* ignore */ }
+  // ZXing fallback
+  startZxingScanner();
 }
 
+function toggleStartStopButtons(running) {
+  document.getElementById('startBtn').style.display = running ? 'none' : 'inline-block';
+  document.getElementById('stopBtn').style.display = running ? 'inline-block' : 'none';
+}
+
+async function startZxingScanner() {
+  const video = document.getElementById('zxingVideo');
+  // show video for ZXing
+  video.style.display = 'block';
+  // ensure ZXing library is present
+  if (!window.ZXing || !ZXing.BrowserMultiFormatReader) {
+    alert('لا يمكن فتح الماسح. مكتبة ZXing غير محملة.');
+    toggleStartStopButtons(false);
+    return;
+  }
+
+  try {
+    _zxingReader = new ZXing.BrowserMultiFormatReader();
+    const devices = await _zxingReader.listVideoInputDevices();
+    if (devices && devices.length) {
+      const env = devices.find(d => /back|rear|environment/i.test(d.label));
+      _zxingDeviceId = env ? env.deviceId : devices[0].deviceId;
+    } else {
+      _zxingDeviceId = undefined;
+    }
+
+    _zxingReader.decodeFromVideoDevice(_zxingDeviceId, video, (result, err) => {
+      if (result) {
+        stopScanner();
+        handleBarcode(result.getText());
+      }
+      // ignore transient errors
+    });
+  } catch (e) {
+    console.error('خطأ في تشغيل ZXing-js:', e);
+    alert('خطأ في تشغيل الكاميرا بالمسح البديل: ' + e);
+    toggleStartStopButtons(false);
+  }
+}
+
+function stopScanner() {
+  // stop Html5Qrcode if present
+  try {
+    if (_html5QrCode && typeof _html5QrCode.stop === 'function') {
+      _html5QrCode.stop().catch(()=>{});
+      _html5QrCode.clear && _html5QrCode.clear();
+    }
+  } catch(e){}
+
+  // stop ZXing reader
+  try {
+    if (_zxingReader && typeof _zxingReader.reset === 'function') _zxingReader.reset();
+  } catch (e) {}
+
+  // stop any media tracks on zxingVideo
+  try {
+    const video = document.getElementById('zxingVideo');
+    const stream = video && (video.srcObject || video.captureStream && video.captureStream()) || null;
+    if (stream && stream.getTracks) {
+      stream.getTracks().forEach(t => t.stop());
+    }
+    if (video) { video.pause(); video.srcObject = null; video.style.display = 'none'; }
+  } catch (e) {}
+
+  _html5QrCode = null;
+  _zxingReader = null;
+  toggleStartStopButtons(false);
+}
+
+/* --- Barcode handling --- */
 function handleBarcode(barcode) {
   const sessionIndex = parseInt(document.getElementById('sessionSelector').value, 10);
   const rows = [...document.querySelectorAll('#attendanceTable tbody tr')];
@@ -450,26 +493,19 @@ function startSpeechRecognition() {
 
   recognition.onstart = () => {
     recognizing = true;
-    statusEl.textContent = 'التعرف الصوتي: مستمع';
+    document.getElementById('voiceStatus').textContent = 'التعرف الصوتي: مستمع';
   };
 
   recognition.onerror = (event) => {
     console.warn('recognition error', event.error);
-    // on some recoverable errors, try to continue
-    if (event.error === 'no-speech' || event.error === 'network') {
-      // do nothing, keep listening
-    } else {
-      // stop for other errors
-      stopSpeechRecognition();
-    }
+    if (event.error !== 'no-speech' && event.error !== 'network') stopSpeechRecognition();
   };
 
   recognition.onend = () => {
     recognizing = false;
-    statusEl.textContent = 'التعرف الصوتي: متوقف';
-    // if checkbox still checked, try to restart to keep listening
+    document.getElementById('voiceStatus').textContent = 'التعرف الصوتي: متوقف';
     if (document.getElementById('voiceCheckbox').checked) {
-      try { recognition.start(); } catch (e) { /* ignore */ }
+      try { recognition.start(); } catch (e) {}
     }
   };
 
@@ -482,24 +518,16 @@ function startSpeechRecognition() {
     }
   };
 
-  try {
-    recognition.start();
-  } catch (e) {
-    console.warn('recognition start failed', e);
-    recognition = null;
-    document.getElementById('voiceCheckbox').checked = false;
-    statusEl.textContent = 'التعرف الصوتي: فشل البدء';
-  }
+  try { recognition.start(); } catch (e) { recognition = null; document.getElementById('voiceCheckbox').checked = false; document.getElementById('voiceStatus').textContent = 'التعرف الصوتي: فشل البدء'; }
 }
 
 function stopSpeechRecognition() {
-  const statusEl = document.getElementById('voiceStatus');
   if (recognition) {
     try { recognition.onresult = null; recognition.onend = null; recognition.onerror = null; recognition.stop(); } catch (e) {}
     recognition = null;
   }
   recognizing = false;
-  statusEl.textContent = 'التعرف الصوتي: متوقف';
+  document.getElementById('voiceStatus').textContent = 'التعرف الصوتي: متوقف';
 }
 
 /* Try to match the spoken name to a student and mark attendance */
@@ -507,39 +535,26 @@ function handleSpokenName(spoken) {
   const sessionIndex = parseInt(document.getElementById('sessionSelector').value, 10);
   const normSpoken = normalizeText(spoken);
   if (!normSpoken) return;
-  // build candidate array: [rowElement, score]
   const rows = [...document.querySelectorAll('#attendanceTable tbody tr')];
   let best = null;
   for (const row of rows) {
     const name = row.children[3].textContent.trim();
     const normName = normalizeText(name);
-    // exact substring or vice versa
-    if (normName === normSpoken || normName.includes(normSpoken) || normSpoken.includes(normName)) {
-      best = { row, score: 100 };
-      break;
-    }
-    // token overlap heuristic
+    if (normName === normSpoken || normName.includes(normSpoken) || normSpoken.includes(normName)) { best = { row, score: 100 }; break; }
     const tokensSpoken = normSpoken.split(' ');
     const tokensName = normName.split(' ');
     let common = 0;
     for (const t of tokensSpoken) if (tokensName.includes(t)) common++;
-    const score = common;
-    if (common > 0 && (!best || score > best.score)) best = { row, score };
+    if (common > 0 && (!best || common > best.score)) best = { row, score: common };
   }
 
-  if (!best) {
-    alert(`❌ لم يتم التعرف على اسم مطابق: "${spoken}"`);
-    return;
-  }
+  if (!best) { alert(`❌ لم يتم التعرف على اسم مطابق: "${spoken}"`); return; }
 
   const row = best.row;
   const checkboxes = row.querySelectorAll('input[type="checkbox"]');
   const target = checkboxes[sessionIndex];
   if (!target) { alert('خطأ: فهرس الجلسة غير صالح'); return; }
-  if (target.checked) {
-    alert(`⚠ الجلسة ${sessionIndex + 1} مسجلة بالفعل لـ ${row.children[3].textContent.trim()}`);
-    return;
-  }
+  if (target.checked) { alert(`⚠ الجلسة ${sessionIndex + 1} مسجلة بالفعل لـ ${row.children[3].textContent.trim()}`); return; }
   target.checked = true;
   if (typeof window.updateTotal === 'function') window.updateTotal(row, row.dataset.studentId);
   alert(`✅ تم تسجيل حضور: ${row.children[3].textContent.trim()} (بواسطة صوتك) في جلسة ${sessionIndex + 1}`);
@@ -547,3 +562,4 @@ function handleSpokenName(spoken) {
 </script>
 </body>
 </html>
+```
