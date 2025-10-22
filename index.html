@@ -13,22 +13,16 @@
     th { background-color: #e0e0e0; }
     input[type="checkbox"] { transform: scale(1.15); transform-origin: center; cursor: pointer; -webkit-appearance: checkbox; }
     button, input[type="file"], select { margin-top: 10px; padding: 8px 10px; font-size: 14px; }
-    #reader { width: 300px; margin-top: 20px; position:relative; }
-    #reader video { width:100%; height:100%; object-fit:cover; display:block; }
+    #reader { width: 300px; margin-top: 20px; }
     #voiceStatus { display:inline-block; margin-right:10px; font-weight:600; color:#333; }
     #voiceControls { margin-top:10px; }
-    #engineLabel { margin-left: 10px; font-weight:600; }
+    #controlsRow { margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    label.small { font-size:13px; }
   </style>
-
-  <!-- Html5Qrcode primary -->
   <script src="https://unpkg.com/html5-qrcode"></script>
-  <!-- ZXing fallback -->
-  <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
-  <!-- QuaggaJS option -->
-  <script src="https://unpkg.com/quagga@0.12.1/dist/quagga.min.js"></script>
 </head>
 <body>
-  <h2> مازن رجب حضور - كيمياء حيوية سريرية (1)</h2>
+  <h2>حضور - كيمياء حيوية سريرية (1)</h2>
 
   <label for="sectionSelector">اختر الشعبة:</label>
   <select id="sectionSelector">
@@ -52,28 +46,34 @@
   <input type="file" accept=".csv" onchange="handleCSVUpload(event)">
   <button onclick="downloadCSV()">↓↓ حفظ الحضور كـ CSV</button>
 
-  <label for="sessionSelector">اختر الجلسة لتسجيل الحضور:</label>
-  <select id="sessionSelector">
-    <option value="0">جلسة 1</option><option value="1">جلسة 2</option><option value="2">جلسة 3</option>
-    <option value="3">جلسة 4</option><option value="4">جلسة 5</option><option value="5">جلسة 6</option>
-    <option value="6">جلسة 7</option><option value="7">جلسة 8</option><option value="8">جلسة 9</option>
-    <option value="9">جلسة 10</option><option value="10">جلسة 11</option><option value="11">جلسة 12</option>
-    <option value="12">جلسة 13</option><option value="13">جلسة 14</option>
-  </select>
+  <div id="controlsRow">
+    <div>
+      <label for="sessionSelector">اختر الجلسة لتسجيل الحضور:</label>
+      <select id="sessionSelector">
+        <option value="0">جلسة 1</option><option value="1">جلسة 2</option><option value="2">جلسة 3</option>
+        <option value="3">جلسة 4</option><option value="4">جلسة 5</option><option value="5">جلسة 6</option>
+        <option value="6">جلسة 7</option><option value="7">جلسة 8</option><option value="8">جلسة 9</option>
+        <option value="9">جلسة 10</option><option value="10">جلسة 11</option><option value="11">جلسة 12</option>
+        <option value="12">جلسة 13</option><option value="13">جلسة 14</option>
+      </select>
+    </div>
 
-  <label id="engineLabel" for="engineSelector">اختر محرك المسح:</label>
-  <select id="engineSelector" title="اختر المحرك: Html5Qrcode سريع للـ QR، ZXing جيد للباركود المتعدد، QuaggaJS للباركود المستقر">
-    <option value="html5qrcode">Html5Qrcode (QR أفضل)</option>
-    <option value="zxing">ZXing-js (قوي ومتعدد الصيغ)</option>
-    <option value="quagga">QuaggaJS (باركود 1D)</option>
-  </select>
+    <div>
+      <label class="small" for="resolutionSelector">اختر دقة الكاميرا:</label>
+      <select id="resolutionSelector" title="اختر دقة الكاميرا">
+        <option value="640x480">640×480 (منخفضة)</option>
+        <option value="1280x720" selected>1280×720 (متوسطة)</option>
+        <option value="1920x1080">1920×1080 (عالية)</option>
+      </select>
+    </div>
 
-  <button id="startBtn" onclick="startScanner()">بدء المسح بالكاميرا</button>
-  <button id="stopBtn" onclick="stopScanner()" style="display:none">■ إيقاف المسح</button>
-  <div id="reader">
-    <!-- Html5Qrcode injects UI here. ZXing and Quagga will use the video element. -->
-    <video id="zxingVideo" playsinline autoplay muted style="display:none"></video>
+    <div>
+      <button onclick="startScanner()">بدء المسح بالكاميرا</button>
+      <button id="stopScanBtn" style="display:none" onclick="stopScanner()">■ إيقاف المسح</button>
+    </div>
   </div>
+
+  <div id="reader"></div>
 
   <!-- Voice recognition controls -->
   <div id="voiceControls" title="عند تفعيل التعرف الصوتي قل اسم الطالب لتسجيل الحضور">
@@ -150,32 +150,40 @@ let lastTap = 0;
 /* --- Speech recognition variables --- */
 let recognition = null;
 let recognizing = false;
-
-/* Scanner engine state */
-let currentEngine = null; // 'html5qrcode' | 'zxing' | 'quagga'
-let _html5QrCode = null;
-let _zxingReader = null;
-let _zxingDeviceId = null;
-let quaggaRunning = false;
+const voiceCheckbox = { el: null };
+const voiceStatusEl = { el: null };
 
 /* Utility: normalize Arabic text for matching */
 function normalizeText(s) {
   if (!s) return '';
+  // remove diacritics, punctuation, extra spaces and normalize ALEF/YA forms
   return s.toLowerCase()
-    .replace(/[\u064B-\u0652]/g, '')
-    .replace(/[^\p{L}\p{N}\s\-]/gu, '')
-    .replace(/[\u0625\u0623\u0622\u0627]/g, '\u0627')
-    .replace(/[\u0649]/g, '\u064a')
-    .replace(/[\u0624]/g, '\u0648')
-    .replace(/[\u0626]/g, '\u064a')
+    .replace(/[\u064B-\u0652]/g, '')                // diacritics
+    .replace(/[^\p{L}\p{N}\s\-]/gu, '')              // non-letters/digits/spaces/hyphen
+    .replace(/[إأآا]/g, 'ا')
+    .replace(/[ى]/g, 'ي')
+    .replace(/[ؤ]/g, 'و')
+    .replace(/[ئ]/g, 'ي')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/* --- Resolution helper --- */
+function getSelectedResolution() {
+  const sel = document.getElementById('resolutionSelector');
+  if (!sel) return { width: 1280, height: 720 };
+  const val = sel.value || '1280x720';
+  const [w, h] = val.split('x').map(n => parseInt(n, 10));
+  return { width: isNaN(w) ? 1280 : w, height: isNaN(h) ? 720 : h };
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   const tbody = document.querySelector('#attendanceTable tbody');
   const sectionSelector = document.getElementById('sectionSelector');
   const sortSelector = document.getElementById('sortSelector');
+
+  voiceCheckbox.el = document.getElementById('voiceCheckbox');
+  voiceStatusEl.el = document.getElementById('voiceStatus');
 
   function loadSavedAttendance(studentId) {
     const raw = localStorage.getItem(COURSE_KEY_PREFIX + studentId);
@@ -219,8 +227,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function getFilteredAndSorted() {
-    const selectedSection = sectionSelector.value;
-    const sortBy = sortSelector.value;
+    const selectedSection = sectionSelector.value; // '999' means all
+    const sortBy = sortSelector.value; // 'section' | 'name' | 'id'
     let list = students.filter(s => selectedSection === '999' || s[0] === selectedSection);
     if (sortBy === 'section') {
       list.sort((a,b) => Number(a[0]) - Number(b[0]) || a[2].localeCompare(b[2], 'ar'));
@@ -254,9 +262,14 @@ document.addEventListener('DOMContentLoaded', () => {
   window.updateTotal = updateTotal;
 
   /* voice checkbox handling */
-  document.getElementById('voiceCheckbox').addEventListener('change', (e) => {
-    if (e.target.checked) startSpeechRecognition(); else stopSpeechRecognition();
+  voiceCheckbox.el.addEventListener('change', async (e) => {
+    if (voiceCheckbox.el.checked) {
+      startSpeechRecognition();
+    } else {
+      stopSpeechRecognition();
+    }
   });
+
 });
 
 /* --- CSV download / upload --- */
@@ -360,182 +373,105 @@ function clearAttendanceData() {
   location.reload();
 }
 
-/* --- Scanner engine selection helpers --- */
-function toggleStartStopButtons(running) {
-  document.getElementById('startBtn').style.display = running ? 'none' : 'inline-block';
-  document.getElementById('stopBtn').style.display = running ? 'inline-block' : 'none';
-}
+/* --- Scanner (Html5Qrcode) with user-selected resolution --- */
+let _html5QrCodeInstance = null;
 
-/* High-level start: chooses engine by selector */
 async function startScanner() {
-  const engine = document.getElementById('engineSelector').value;
-  currentEngine = engine;
-  toggleStartStopButtons(true);
-
-  // check camera support early
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     alert('الكاميرا غير مدعومة في هذا المستعرض. افتح الصفحة عبر HTTPS أو استخدم متصفح حديث.');
-    toggleStartStopButtons(false);
     return;
   }
 
-  try {
-    if (engine === 'html5qrcode') {
-      await startHtml5Qrcode();
-      return;
-    } else if (engine === 'zxing') {
-      await startZxingScanner();
-      return;
-    } else if (engine === 'quagga') {
-      await startQuaggaScanner();
-      return;
-    } else {
-      alert('محرك غير معروف.');
-      toggleStartStopButtons(false);
-    }
-  } catch (e) {
-    console.warn('Start scanner failed for engine', engine, e);
-    alert('فشل بدء الماسح: ' + e);
-    toggleStartStopButtons(false);
-  }
-}
+  const readerId = "reader";
+  const container = document.getElementById(readerId);
+  // clear previous UI
+  container.innerHTML = '<div id="html5qr-container"></div>';
+  const res = getSelectedResolution();
 
-/* Stop currently running engine */
-function stopScanner() {
-  // stop Html5Qrcode if present
-  try {
-    if (_html5QrCode && typeof _html5QrCode.stop === 'function') {
-      _html5QrCode.stop().catch(()=>{});
-      _html5QrCode.clear && _html5QrCode.clear();
-    }
-  } catch(e){}
-
-  // stop ZXing reader
-  try {
-    if (_zxingReader && typeof _zxingReader.reset === 'function') _zxingReader.reset();
-  } catch (e) {}
-
-  // stop Quagga
-  try {
-    if (quaggaRunning && window.Quagga && Quagga.stop) Quagga.stop();
-  } catch (e) {}
-
-  // stop any media tracks on zxingVideo
-  try {
-    const video = document.getElementById('zxingVideo');
-    const stream = video && (video.srcObject || (video.captureStream && video.captureStream())) || null;
-    if (stream && stream.getTracks) stream.getTracks().forEach(t => t.stop());
-    if (video) { video.pause(); video.srcObject = null; video.style.display = 'none'; }
-  } catch (e) {}
-
-  _html5QrCode = null;
-  _zxingReader = null;
-  quaggaRunning = false;
-  currentEngine = null;
-  toggleStartStopButtons(false);
-}
-
-/* --- Html5Qrcode engine --- */
-async function startHtml5Qrcode() {
-  const readerDiv = document.getElementById('reader');
-  // clear any injected UI (Html5Qrcode requires a clean container)
-  readerDiv.innerHTML = '<div id="html5qr-container"></div><video id="zxingVideo" playsinline autoplay muted style="display:none"></video>';
-  _html5QrCode = new Html5Qrcode("html5qr-container", { verbose: false });
-
-  await _html5QrCode.start(
-    { facingMode: "environment" },
-    { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0, disableFlip: true },
-    decodedText => {
-      // stop and handle
-      try { _html5QrCode.stop().then(() => _html5QrCode.clear()).catch(()=>{}); } catch(e){}
-      _html5QrCode = null;
-      handleBarcode(decodedText);
-      toggleStartStopButtons(false);
-    },
-    () => {}
-  ).catch(err => { throw err; });
-
-  // best-effort apply constraints
-  try { await _html5QrCode.applyVideoConstraints({ width: 1280, height: 720 }); } catch (e) {}
-}
-
-/* --- ZXing-js engine --- */
-async function startZxingScanner() {
-  const video = document.getElementById('zxingVideo');
-  video.style.display = 'block';
-
-  if (!window.ZXing || !ZXing.BrowserMultiFormatReader) {
-    throw 'مكتبة ZXing غير محملة.';
-  }
-
-  _zxingReader = new ZXing.BrowserMultiFormatReader();
-  const devices = await _zxingReader.listVideoInputDevices();
-  if (devices && devices.length) {
-    const env = devices.find(d => /back|rear|environment/i.test(d.label));
-    _zxingDeviceId = env ? env.deviceId : devices[0].deviceId;
-  } else {
-    _zxingDeviceId = undefined;
-  }
-
-  _zxingReader.decodeFromVideoDevice(_zxingDeviceId, video, (result, err) => {
-    if (result) {
-      stopScanner();
-      handleBarcode(result.getText());
-    }
-    // ignore transient errors
-  });
-}
-
-/* --- QuaggaJS engine --- */
-async function startQuaggaScanner() {
-  if (!window.Quagga) throw 'مكتبة Quagga غير محملة.';
-  const videoEl = document.getElementById('zxingVideo');
-  videoEl.style.display = 'block';
-  quaggaRunning = false;
-
-  // Quagga configuration (1D barcodes oriented horizontally)
+  // create instance
+  _html5QrCodeInstance = new Html5Qrcode("html5qr-container", { verbose: false });
   const config = {
-    inputStream: {
-      name: "Live",
-      type: "LiveStream",
-      target: document.querySelector('#reader'),
-      constraints: {
-        facingMode: "environment",
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
-      }
-    },
-    locator: { patchSize: "medium", halfSample: true },
-    numOfWorkers: navigator.hardwareConcurrency ? Math.max(1, Math.min(4, navigator.hardwareConcurrency - 1)) : 2,
-    locate: true,
-    decoder: {
-      readers: ["code_128_reader", "ean_reader", "ean_8_reader", "code_39_reader", "upc_reader", "upc_e_reader"]
-    }
+    fps: 10,
+    qrbox: { width: Math.min(250, res.width * 0.5), height: Math.min(250, res.height * 0.5) }
   };
 
-  return new Promise((resolve, reject) => {
+  // construct constraints using selected resolution
+  const constraints = { facingMode: "environment", width: { ideal: res.width }, height: { ideal: res.height } };
+
+  // Start with constraints object; Html5Qrcode accepts either cameraId or constraints
+  try {
+    await _html5QrCodeInstance.start(
+      { video: constraints },
+      config,
+      decodedText => {
+        // on success
+        stopScanner();
+        handleBarcode(decodedText);
+      },
+      errorMessage => {
+        // decode errors are common, ignore
+      }
+    );
+    // show stop button
+    document.getElementById('stopScanBtn').style.display = 'inline-block';
+  } catch (err1) {
+    // fallback: try facingMode only with width/height direct (older versions or browsers may differ)
     try {
-      Quagga.init(config, function(err) {
-        if (err) { reject(err); return; }
-        Quagga.onDetected(function(result) {
-          if (result && result.codeResult && result.codeResult.code) {
-            const code = result.codeResult.code;
-            Quagga.offDetected && Quagga.offDetected();
-            // stop Quagga then handle
-            try { Quagga.stop(); } catch(e){}
-            quaggaRunning = false;
-            handleBarcode(code);
-            toggleStartStopButtons(false);
-          }
-        });
-        Quagga.start();
-        quaggaRunning = true;
-        resolve();
-      });
-    } catch (e) {
-      reject(e);
+      await _html5QrCodeInstance.start(
+        { facingMode: "environment", width: res.width, height: res.height },
+        config,
+        decodedText => { stopScanner(); handleBarcode(decodedText); },
+        errorMessage => {}
+      );
+      document.getElementById('stopScanBtn').style.display = 'inline-block';
+    } catch (err2) {
+      // final fallback: let library pick default camera
+      try {
+        await _html5QrCodeInstance.start(true, config,
+          decodedText => { stopScanner(); handleBarcode(decodedText); },
+          errorMessage => {}
+        );
+        document.getElementById('stopScanBtn').style.display = 'inline-block';
+      } catch (err3) {
+        console.error('All start attempts failed:', err1, err2, err3);
+        alert('تعذر تشغيل الكاميرا. تأكد من منح الإذن واستخدام HTTPS أو متصفح حديث.');
+        try { _html5QrCodeInstance.clear(); } catch (e) {}
+        _html5QrCodeInstance = null;
+        return;
+      }
     }
-  });
+  }
+
+  // try to apply exact constraints after start (best-effort)
+  try {
+    await _html5QrCodeInstance.applyVideoConstraints({ width: res.width, height: res.height });
+  } catch (e) {
+    // ignore if not supported
+  }
+
+  // optionally log actual settings
+  try {
+    const videoElem = document.querySelector('#html5qr-container video');
+    if (videoElem && videoElem.srcObject && videoElem.srcObject.getVideoTracks) {
+      const track = videoElem.srcObject.getVideoTracks()[0];
+      if (track && track.getSettings) {
+        console.info('Camera actual settings:', track.getSettings());
+      }
+    }
+  } catch (e) {}
+}
+
+function stopScanner() {
+  if (_html5QrCodeInstance) {
+    try {
+      _html5QrCodeInstance.stop().catch(()=>{});
+      _html5QrCodeInstance.clear && _html5QrCodeInstance.clear();
+    } catch (e) {}
+    _html5QrCodeInstance = null;
+  }
+  // hide stop button
+  const btn = document.getElementById('stopScanBtn');
+  if (btn) btn.style.display = 'none';
 }
 
 /* --- Barcode handling --- */
@@ -641,3 +577,4 @@ function handleSpokenName(spoken) {
 </script>
 </body>
 </html>
+```
