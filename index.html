@@ -367,13 +367,172 @@ async function stopScanner() {
   }
 }
 
-/* --- minimal CSV and attendance functions preserved (you can paste your originals here) --- */
-/* For brevity, ensure your downloadCSV, handleCSVUpload, populateTable, updateTotal, etc. remain as before. */
-function downloadCSV() { /* paste your original downloadCSV implementation here */ }
-function handleCSVUpload(e) { /* paste your original handleCSVUpload implementation here */ }
-function populateTable() { /* paste your original populateTable implementation here */ }
-function updateTotal() { /* paste your original updateTotal implementation here */ }
-function clearAttendanceData() { /* paste original clearAttendanceData here */ }
+<!-- BEGIN — restore attendance + CSV functions -->
+/* --- attendance storage helpers --- */
+function loadSavedAttendance(studentId) {
+  const raw = localStorage.getItem(COURSE_KEY_PREFIX + studentId);
+  return raw ? JSON.parse(raw) : Array(14).fill(false);
+}
+function saveAttendance(studentId, values) {
+  localStorage.setItem(COURSE_KEY_PREFIX + studentId, JSON.stringify(values));
+}
+
+/* --- update total cell and persist --- */
+function updateTotal(row, studentId) {
+  const checkboxes = row.querySelectorAll('input[type="checkbox"]');
+  const values = [];
+  let total = 0;
+  checkboxes.forEach(cb => { values.push(cb.checked); if (cb.checked) total++; });
+  const totalCell = row.querySelector('.total');
+  if (totalCell) totalCell.textContent = total;
+  saveAttendance(studentId, values);
+}
+
+/* --- row creation --- */
+function createRow(sect, studentId, name, index, saved) {
+  const tr = document.createElement('tr');
+  tr.dataset.section = sect;
+  tr.dataset.studentId = studentId;
+  tr.innerHTML = `
+    <td>${index + 1}</td>
+    <td>${sect}</td>
+    <td>${studentId}</td>
+    <td>${name}</td>
+    <td class="total">${saved.filter(Boolean).length}</td>
+  `;
+  for (let i = 0; i < 14; i++) {
+    const td = document.createElement('td');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !!saved[i];
+    cb.addEventListener('change', () => updateTotal(tr, studentId));
+    td.appendChild(cb);
+    tr.appendChild(td);
+  }
+  return tr;
+}
+
+/* --- filtering / sorting --- */
+function getFilteredAndSorted() {
+  const sectionSelector = document.getElementById('sectionSelector');
+  const sortSelector = document.getElementById('sortSelector');
+  const selectedSection = sectionSelector ? sectionSelector.value : '999';
+  const sortBy = sortSelector ? sortSelector.value : 'section';
+  let list = students.filter(s => selectedSection === '999' || s[0] === selectedSection);
+  if (sortBy === 'section') {
+    list.sort((a,b) => Number(a[0]) - Number(b[0]) || a[2].localeCompare(b[2], 'ar'));
+  } else if (sortBy === 'name') {
+    list.sort((a,b) => a[2].localeCompare(b[2], 'ar'));
+  } else if (sortBy === 'id') {
+    list.sort((a,b) => {
+      const ai = Number(a[1]); const bi = Number(b[1]);
+      if (!isNaN(ai) && !isNaN(bi)) return ai - bi;
+      return a[1].localeCompare(b[1], 'ar');
+    });
+  }
+  return list;
+}
+
+/* --- populate table --- */
+function populateTable() {
+  const tbody = document.querySelector('#attendanceTable tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  const list = getFilteredAndSorted();
+  list.forEach((student, idx) => {
+    const [sect, id, name] = student;
+    const saved = loadSavedAttendance(id);
+    const tr = createRow(sect, id, name, idx, saved);
+    tbody.appendChild(tr);
+  });
+}
+
+/* --- CSV download --- */
+function downloadCSV() {
+  const rows = document.querySelectorAll('#attendanceTable tbody tr');
+  let header = "رقم,الشعبة,الرقم الجامعي,اسم الطالب,الإجمالي";
+  for (let i = 1; i <= 14; i++) header += `,جلسة ${i}`;
+  header += "\n";
+
+  let csv = header;
+  rows.forEach((row, idx) => {
+    const cells = row.querySelectorAll('td');
+    const number = idx + 1;
+    const sect = cells[1].textContent.trim();
+    const id = cells[2].textContent.trim();
+    const name = cells[3].textContent.trim();
+    const total = cells[4].textContent.trim();
+    let sessionData = '';
+    for (let i = 5; i < cells.length; i++) {
+      const input = cells[i].querySelector('input');
+      sessionData += `,${input && input.checked ? '1' : '0'}`;
+    }
+    csv += `${number},${sect},${id},"${name}",${total}${sessionData}\n`;
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = "20251_كيمياء حيوية سريرية (1).csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* --- CSV upload --- */
+function handleCSVUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const text = e.target.result;
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) return;
+    lines.shift(); // remove header
+    lines.forEach(line => {
+      const parts = [];
+      let cur = '', inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') { inQuotes = !inQuotes; continue; }
+        if (ch === ',' && !inQuotes) { parts.push(cur); cur = ''; continue; }
+        cur += ch;
+      }
+      if (cur !== '') parts.push(cur);
+      if (parts.length < 5) return;
+      const id = parts[2].trim();
+      const sessions = parts.slice(5, 19).map(v => String(v).trim() === '1');
+      while (sessions.length < 14) sessions.push(false);
+      localStorage.setItem(COURSE_KEY_PREFIX + id, JSON.stringify(sessions));
+    });
+    event.target.value = '';
+    // refresh table after upload
+    populateTable();
+  };
+  reader.readAsText(file);
+}
+
+/* --- clearAttendanceData (restore) --- */
+function clearAttendanceData() {
+  const choice = document.getElementById('clearChoice').value;
+  const keysToRemove = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key) continue;
+    if (choice === '1' && key.startsWith(COURSE_KEY_PREFIX)) keysToRemove.push(key);
+    else if (choice === '2' && key.includes(SEMESTER_KEY_PREFIX)) keysToRemove.push(key);
+    else if (choice === '3' && key.startsWith('attendance_')) keysToRemove.push(key);
+  }
+  if (keysToRemove.length === 0) { alert('لا توجد مفاتيح للحذف بناءً على الاختيار.'); return; }
+  if (!confirm(`سيتم حذف ${keysToRemove.length} عنصر. هل تود المتابعة؟`)) return;
+  keysToRemove.forEach(k => localStorage.removeItem(k));
+  const messages = { "1":"☑ تم محي سجلات هذا المقرر في هذا الفصل.","2":"☑ تم محي سجلات مقررات هذا الفصل.","3":"☑ تم محي سجلات جميع الفصول." };
+  alert(messages[choice] || 'تمت العملية.');
+  populateTable();
+}
+<!-- END — restore attendance + CSV functions -->
 
 /* --- Barcode handling (kept from original) --- */
 function handleBarcode(barcode) {
