@@ -374,6 +374,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const sectionSelector = document.getElementById('sectionSelector');
   const sortSelector = document.getElementById('sortSelector');
 
+  // ... all your function definitions ...
+
+  populateTable(); // ✅ This line ensures the table is filled on page load
+  sectionSelector.addEventListener('change', populateTable);
+sortSelector.addEventListener('change', populateTable);
+});
+
 function loadSavedAttendance(studentId) {
   const raw = localStorage.getItem(COURSE_KEY_PREFIX + studentId);
   return raw ? JSON.parse(raw) : Array(14).fill(false);
