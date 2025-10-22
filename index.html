@@ -367,7 +367,7 @@ async function stopScanner() {
   }
 }
 
-<!-- BEGIN — restore attendance + CSV functions -->
+/*-- BEGIN — restore attendance + CSV functions -- */
 /* --- attendance storage helpers --- */
 function loadSavedAttendance(studentId) {
   const raw = localStorage.getItem(COURSE_KEY_PREFIX + studentId);
@@ -532,7 +532,7 @@ function clearAttendanceData() {
   alert(messages[choice] || 'تمت العملية.');
   populateTable();
 }
-<!-- END — restore attendance + CSV functions -->
+/*-- END — restore attendance + CSV functions -- */
 
 /* --- Barcode handling (kept from original) --- */
 function handleBarcode(barcode) {
