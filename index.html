@@ -390,32 +390,33 @@ async function startScanner() {
 
   // create instance
   _html5QrCodeInstance = new Html5Qrcode("html5qr-container", { verbose: false });
-  const config = {
-    fps: 10,
-    qrbox: { width: Math.min(250, res.width * 0.5), height: Math.min(250, res.height * 0.5) }
-  };
 
-  // construct constraints using selected resolution
-  const constraints = { facingMode: "environment", width: { ideal: res.width }, height: { ideal: res.height } };
+  // config: choose qrbox proportional to chosen resolution (best-effort)
+  const qrboxSize = Math.min(300, Math.floor(Math.min(res.width, res.height) * 0.4));
+  const config = { fps: 10, qrbox: { width: qrboxSize, height: qrboxSize } };
 
-  // Start with constraints object; Html5Qrcode accepts either cameraId or constraints
+  // Preferred constraints object (must pass top-level properties accepted by browsers)
+  const constraints = { video: { facingMode: "environment", width: { ideal: res.width }, height: { ideal: res.height } } };
+
+  // Try decode using getUserMedia constraints via library helper (best-effort)
   try {
+    // Html5Qrcode accepts a camera constraints object directly in newer versions,
+    // but some versions expect a cameraId or facingMode string; try both patterns.
     await _html5QrCodeInstance.start(
-      { video: constraints },
+      constraints, // pass the constraints object directly
       config,
       decodedText => {
-        // on success
         stopScanner();
         handleBarcode(decodedText);
       },
-      errorMessage => {
-        // decode errors are common, ignore
-      }
+      errorMessage => {}
     );
-    // show stop button
     document.getElementById('stopScanBtn').style.display = 'inline-block';
+    // try to apply exact constraints (best-effort)
+    try { await _html5QrCodeInstance.applyVideoConstraints({ width: res.width, height: res.height }); } catch (e) {}
+    return;
   } catch (err1) {
-    // fallback: try facingMode only with width/height direct (older versions or browsers may differ)
+    // Fallback 1: try passing facingMode and numeric width/height at top-level (some builds accept these)
     try {
       await _html5QrCodeInstance.start(
         { facingMode: "environment", width: res.width, height: res.height },
@@ -424,16 +425,19 @@ async function startScanner() {
         errorMessage => {}
       );
       document.getElementById('stopScanBtn').style.display = 'inline-block';
+      try { await _html5QrCodeInstance.applyVideoConstraints({ width: res.width, height: res.height }); } catch (e) {}
+      return;
     } catch (err2) {
-      // final fallback: let library pick default camera
+      // Fallback 2: allow library choose default camera (previous behavior)
       try {
         await _html5QrCodeInstance.start(true, config,
           decodedText => { stopScanner(); handleBarcode(decodedText); },
           errorMessage => {}
         );
         document.getElementById('stopScanBtn').style.display = 'inline-block';
+        return;
       } catch (err3) {
-        console.error('All start attempts failed:', err1, err2, err3);
+        console.error('All Html5Qrcode start attempts failed:', err1, err2, err3);
         alert('تعذر تشغيل الكاميرا. تأكد من منح الإذن واستخدام HTTPS أو متصفح حديث.');
         try { _html5QrCodeInstance.clear(); } catch (e) {}
         _html5QrCodeInstance = null;
@@ -441,24 +445,6 @@ async function startScanner() {
       }
     }
   }
-
-  // try to apply exact constraints after start (best-effort)
-  try {
-    await _html5QrCodeInstance.applyVideoConstraints({ width: res.width, height: res.height });
-  } catch (e) {
-    // ignore if not supported
-  }
-
-  // optionally log actual settings
-  try {
-    const videoElem = document.querySelector('#html5qr-container video');
-    if (videoElem && videoElem.srcObject && videoElem.srcObject.getVideoTracks) {
-      const track = videoElem.srcObject.getVideoTracks()[0];
-      if (track && track.getSettings) {
-        console.info('Camera actual settings:', track.getSettings());
-      }
-    }
-  } catch (e) {}
 }
 
 function stopScanner() {
