@@ -369,6 +369,11 @@ async function stopScanner() {
 
 /*-- BEGIN — restore attendance + CSV functions -- */
 /* --- attendance storage helpers --- */
+document.addEventListener('DOMContentLoaded', () => {
+  const tbody = document.querySelector('#attendanceTable tbody');
+  const sectionSelector = document.getElementById('sectionSelector');
+  const sortSelector = document.getElementById('sortSelector');
+
 function loadSavedAttendance(studentId) {
   const raw = localStorage.getItem(COURSE_KEY_PREFIX + studentId);
   return raw ? JSON.parse(raw) : Array(14).fill(false);
