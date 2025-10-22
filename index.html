@@ -375,96 +375,116 @@ function clearAttendanceData() {
 
 /* --- Scanner (Html5Qrcode) with user-selected resolution --- */
 let _html5QrCodeInstance = null;
+let _starting = false; // يمنع الاستدعاءات المتزامنة
 
 async function startScanner() {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert('الكاميرا غير مدعومة في هذا المستعرض. افتح الصفحة عبر HTTPS أو استخدم متصفح حديث.');
-    return;
-  }
+  if (_starting) return;
+  _starting = true;
 
-  const readerId = "reader";
-  const container = document.getElementById(readerId);
-  container.innerHTML = '<div id="html5qr-container"></div>';
-  const res = getSelectedResolution();
-
-  // create instance
-  _html5QrCodeInstance = new Html5Qrcode("html5qr-container", { verbose: false });
-
-  // choose qrbox proportional to chosen resolution
-  const qrboxSize = Math.min(300, Math.max(160, Math.floor(Math.min(res.width, res.height) * 0.35)));
-  const config = { fps: 10, qrbox: { width: qrboxSize, height: qrboxSize } };
-
-  // Build three start arguments to try (most browsers / builds accept one of them)
-  const constraintsObj = { video: { facingMode: "environment", width: { ideal: res.width }, height: { ideal: res.height } } };
-  const facingWithNumbers = { facingMode: "environment", width: res.width, height: res.height };
-  const allowDefault = true;
-
-  const errors = [];
-
-  // Try 1: pass a constraints object (works with newer html5-qrcode)
   try {
-    await _html5QrCodeInstance.start(
-      constraintsObj,
-      config,
-      decodedText => { stopScanner(); handleBarcode(decodedText); },
-      errorMessage => {}
-    );
-    document.getElementById('stopScanBtn').style.display = 'inline-block';
-    try { await _html5QrCodeInstance.applyVideoConstraints({ width: res.width, height: res.height }); } catch(e) {}
-    return;
-  } catch (e1) {
-    errors.push(e1);
-  }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('الكاميرا غير مدعومة في هذا المستعرض. افتح الصفحة عبر HTTPS أو استخدم متصفح حديث.');
+      return;
+    }
 
-  // Try 2: pass facingMode plus numeric width/height (some builds)
-  try {
-    await _html5QrCodeInstance.start(
-      facingWithNumbers,
-      config,
-      decodedText => { stopScanner(); handleBarcode(decodedText); },
-      errorMessage => {}
-    );
-    document.getElementById('stopScanBtn').style.display = 'inline-block';
-    try { await _html5QrCodeInstance.applyVideoConstraints({ width: res.width, height: res.height }); } catch(e) {}
-    return;
-  } catch (e2) {
-    errors.push(e2);
-  }
+    // تنظيف أي instance سابق إن وجد (انتظر الانتهاء)
+    if (_html5QrCodeInstance) {
+      try { await _html5QrCodeInstance.stop(); } catch(e){/*ignore*/} 
+      try { _html5QrCodeInstance.clear(); } catch(e){/*ignore*/}
+      _html5QrCodeInstance = null;
+    }
 
-  // Try 3: allow library to pick default camera (older behavior)
-  try {
-    await _html5QrCodeInstance.start(
-      allowDefault,
-      config,
-      decodedText => { stopScanner(); handleBarcode(decodedText); },
-      errorMessage => {}
-    );
-    document.getElementById('stopScanBtn').style.display = 'inline-block';
-    return;
-  } catch (e3) {
-    errors.push(e3);
-  }
+    const container = document.getElementById('reader');
+    container.innerHTML = '<div id="html5qr-container"></div>';
 
-  // All attempts failed — report the errors for diagnosis
-  console.error('Html5Qrcode start failures:', errors[0], errors[1], errors[2]);
-  alert('تعذر تشغيل الكاميرا. تأكد من منح الإذن واستخدام HTTPS أو متصفح حديث. افتح Console للاطلاع على تفاصيل الخطأ.');
-  try { _html5QrCodeInstance.clear(); } catch (e) {}
-  _html5QrCodeInstance = null;
-}
+    const res = getSelectedResolution(); // دالة مساعدة لديك بالفعل
+    const qrboxSize = Math.min(300, Math.max(160, Math.floor(Math.min(res.width, res.height) * 0.35)));
+    const config = { fps: 10, qrbox: { width: qrboxSize, height: qrboxSize } };
 
+    // احصل على قائمة الأجهزة واختر الجهاز الخلفي المناسب
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const videoInputs = devices.filter(d => d.kind === 'videoinput');
+    let chosenDeviceId = null;
 
-function stopScanner() {
-  if (_html5QrCodeInstance) {
+    // حاول اختيار كاميرا مسماة back/rear/environment إن وُجدت
+    for (const dev of videoInputs) {
+      if (/back|rear|environment/i.test(dev.label)) { chosenDeviceId = dev.deviceId; break; }
+    }
+    // وإلا خذ أول جهاز إن وُجد
+    if (!chosenDeviceId && videoInputs.length) chosenDeviceId = videoInputs[0].deviceId;
+
+    // إذا لم نجد أي جهاز، افشل مبكراً
+    if (!chosenDeviceId) {
+      alert('لم يتم العثور على أي كاميرا. تأكد من منح الإذن للكاميرا.');
+      return;
+    }
+
+    // كـ أفضل ممارسة: حاول فتح stream مبدئياً مع القيود المطلوبة حتى نحصل على جهاز يقبل العرض
+    const constraints = { video: { deviceId: { exact: chosenDeviceId }, width: { ideal: res.width }, height: { ideal: res.height }, facingMode: "environment" } };
+    let stream = null;
     try {
-      _html5QrCodeInstance.stop().catch(()=>{});
-      _html5QrCodeInstance.clear && _html5QrCodeInstance.clear();
-    } catch (e) {}
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      // نوقف المسار فوراً لأن Html5Qrcode سيأخذ الكاميرا بنفسه عند start
+      stream.getTracks().forEach(t => t.stop());
+    } catch (e) {
+      // لو فشل، نجرب بدون قيود الدقة (فقط deviceId)
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: chosenDeviceId }, facingMode: "environment" } });
+        stream.getTracks().forEach(t => t.stop());
+      } catch (e2) {
+        console.warn('getUserMedia failed with exact device constraints, will still try Html5Qrcode.start with deviceId', e, e2);
+      }
+    }
+
+    // الآن مرّر deviceId كسلسلة إلى Html5Qrcode.start — هذا الشكل مدعوم ويمنع الخطأ "Only facingMode and deviceId are supported"
+    _html5QrCodeInstance = new Html5Qrcode("html5qr-container", { verbose: false });
+
+    // تأكد من إظهار زر الإيقاف بعد النجاح
+    await _html5QrCodeInstance.start(
+      chosenDeviceId, // ممرّر كـ cameraId (سلسلة deviceId)
+      config,
+      decodedText => {
+        // عند القراءة الناجحة: قم بالتعامل ثم أوقف الماسح
+        try { stopScanner(); } catch(e){/*ignore*/}
+        handleBarcode(decodedText);
+      },
+      errorMessage => { /* تجاهل رسائل الفشل المؤقتة ضمن الإطار */ }
+    );
+
+    // حاول تطبيق قيود الدقة بعد البدء (قد يقبلها بعض المتصفحات)
+    try { await _html5QrCodeInstance.applyVideoConstraints({ width: res.width, height: res.height }); } catch(e){/* ignore */}
+    document.getElementById('stopScanBtn') && (document.getElementById('stopScanBtn').style.display = 'inline-block');
+
+  } catch (err) {
+    console.error('startScanner error:', err);
+    alert('تعذر تشغيل الكاميرا. تأكد من منح الإذن واستخدام HTTPS أو متصفح حديث. افتح Console لمزيد من التفاصيل.');
+    try { if (_html5QrCodeInstance) { await _html5QrCodeInstance.clear(); } } catch(e){}
     _html5QrCodeInstance = null;
+  } finally {
+    _starting = false;
   }
-  // hide stop button
-  const btn = document.getElementById('stopScanBtn');
-  if (btn) btn.style.display = 'none';
 }
+
+async function stopScanner() {
+  // منع تداخل حالة الانتقال
+  if (_starting) {
+    // انتظر قليلا حتى ينتهي بدء التشغيل أو ألغِ العملية؛ هنا ننتظر 100ms كحل بسيط
+    await new Promise(r => setTimeout(r, 100));
+  }
+  try {
+    if (_html5QrCodeInstance) {
+      try { await _html5QrCodeInstance.stop(); } catch(e){ console.warn('stop error', e); }
+      try { _html5QrCodeInstance.clear(); } catch(e){/*ignore*/}
+      _html5QrCodeInstance = null;
+    }
+  } catch (e) {
+    console.error('stopScanner error', e);
+  } finally {
+    const btn = document.getElementById('stopScanBtn');
+    if (btn) btn.style.display = 'none';
+  }
+}
+
 
 /* --- Barcode handling --- */
 function handleBarcode(barcode) {
